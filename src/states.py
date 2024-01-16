@@ -21,7 +21,7 @@ class ACTStates:
 
     """
     def replace(self,
-                iteration: Optional[int] = None,
+                iterations: Optional[jnp.ndarray] = None,
                 residuals: Optional[jnp.ndarray] = None,
                 probabilities: Optional[jnp.ndarray] = None,
                 accumulators: Optional[Dict[str, PyTree]] = None,
@@ -37,8 +37,8 @@ class ACTStates:
         :param updates:
         :return: A new ACT states
         """
-        if iteration is None:
-            iteration = self.iteration
+        if iterations is None:
+            iterations = self.iterations
         if residuals is None:
             residuals = self.residuals
         if probabilities is None:
@@ -48,7 +48,7 @@ class ACTStates:
         if updates is None:
             updates = self.updates
 
-        return ACTStates(iteration,
+        return ACTStates(iterations,
                          residuals,
                          probabilities,
                          self.defaults,
@@ -56,7 +56,7 @@ class ACTStates:
                          updates)
 
     epsilon: float
-    iteration: int
+    iteration: jnp.ndarray
     residuals: jnp.ndarray
     probabilities: jnp.ndarray
     defaults: Dict[str, PyTree]
