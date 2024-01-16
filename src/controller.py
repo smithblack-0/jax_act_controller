@@ -7,54 +7,107 @@ some degree of error checking.
 from typing import Optional, List, Dict, Union, Any, Tuple
 from dataclasses import dataclass
 from src.states import ACTStates
-
+from src.immutable import Immutable
 import jax.tree_util
 import textwrap
 from jax import numpy as jnp
 from src.types import PyTree
 
-def _broadcast_from_dim_0(tensor: jnp.ndarray,
-                          length: int
-                          )->jnp.ndarray:
-    while len(tensor.shape) < length:
-        tensor = tensor[..., None]
-    return tensor
 
-def _weight_and_add(original: jnp.ndarray,
-                   new: jnp.ndarray,
-                   halting_probabilities: jnp.ndarray
-                   )->jnp.ndarray:
+class ACT_Controller(Immutable):
+
+    # Direct properties
+    @property
+    def probabilities(self)->jnp.ndarray:
+        return self.state.probabilities
+
+    @property
+    def residuals(self)->jnp.ndarray:
+        return self.state.residuals
+
+    @property
+    def iterations(self)->int:
+        return self.state.iteration
+
+    @property
+    def accumulators(self)->PyTree:
+        return self.state.accumulators
+
+    # Inferred properties
+    @property
+    def halt_threshold(self)->float:
+        return 1-self.state.epsilon
+    @property
+    def halted_batches(self)->jnp.ndarray:
+        return self.probabilities > self.halt_threshold
+
+    # Helper logic
+
+    def _process_probabilities(self,
+                               halting_probabilities: jnp.ndarray
+
+                               ):
+    def _update_probabilities(cls,
+                             state: ACTStates,
+                             halting_probabilities: jnp.ndarray
+                             )-> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+        #TODO: Doublecheck and simplify.
+        halt_threshold = cls.halt_threshold(state)
+        current_probabilities = state.probabilities
+        current_residuals = state.residuals
+
+        will_be_halted = halting_probabilities + current_probabilities > halt_threshold
+        currently_halted = current_probabilities > halt_threshold
+        newly_halting = will_be_halted & ~currently_halted
+
+        residuals = 1 - halting_probabilities
+        residuals = jnp.where(newly_halting, residuals, 0)
+        residuals = current_residuals + residuals
+
+        halting_probabilities = jnp.where(will_be_halted, residuals, halting_probabilities)
+        probabilities = current_probabilities + halting_probabilities
+
+        return probabilities, halting_probabilities, residuals
 
 
-
-
-
-class ACT_Controller:
-
-    @staticmethod
-    def cache_accumulator(state: ACTStates,
+    # Main logic.
+    def cache_accumulator(self,
                           name: str,
-                          item: PyTree)->ACTStates:
+                          item: PyTree
+                          )->'ACT_Controller':
         """
-        Cache a new accumulator away for when we perform
-        the iteration step.
+        Cache a new group of accumulator pytrees onto a configured
+        entry. Caching will save for the later weight-and-add process.
 
-        :param state: The act state.
         :param name: The name of the accumulator to cache
         :param item: What to actually cache
-        :return: A new ACTStates state, with the item cached.
         :except: ValueError, if accumulator referenced does not exist
         :except: RuntimeError, if accumulator was already set.
+        :return: New ACT_Controller with updated state
         """
 
-
+        state = self.state
         if name not in state.updates:
             raise ValueError(f"Accumulator with name {name} was never setup")
         if state.updates[name] != None:
             raise RuntimeError(f"Accumulator with name {name} was already set")
         update = state.updates.copy()
         update[name] = item
-        return state.replace(updates=update)
+        new_state = state.replace(updates=update)
+        return ACT_Controller(new_state)
+    @classmethod
+
+    def __init__(self, state: ACTStates):
+        super().__init__()
+        self.state = state
+        self.lock()
+
+class ACT_Controller:
+    @staticmethod
+    def halt_threshold(state: ACTStates)->float:
+        return 1 - state.epsilon
+
+
 
     @classmethod
     def _update_accumulator(cls,
@@ -73,12 +126,13 @@ class ACT_Controller:
 
         if accumulator_value.shape != update_value.shape:
             msg = f"""
-            Original accumulator of shape {original.shape} does not match
-            update accumulator of shape {new.shape}. This is not allowed
+            Original accumulator of shape {accumulator_value.shape} does not match
+            update accumulator of shape {update_value.shape}. This is not allowed
             """
             msg = textwrap.dedent(msg)
             raise RuntimeError(msg)
 
+        # Broadcast halting probabilities to match, then weight and add.
         while len(halting_probabilities.shape) < len(accumulator_value.shape):
             halting_probabilities = halting_probabilities[..., None]
         return accumulator_value + halting_probabilities*update_value
@@ -95,22 +149,20 @@ class ACT_Controller:
         :param halting_probabilities:
         :return:
         """
-        # Logically, it should be noted that for error checking
-        # to work we have to reset the updates back to none
-        # during the iterate process.
-
         if halting_probabilities.shape != state.probabilities.shape:
             raise ValueError("provided and original shapes of halting probabilities do not match")
 
-        # Unload the state values that will be changing. Make copies where appropriate to avoid
-        # side effects
 
-        iteration = state.iteration
+        # Clamp the halting probabilities, and update the residuals
+        # as is appropriate.
+
+        probabilities, halting_probabilities, residuals = cls._update_probabilities(state, halting_probabilities)
+
+        # Update the accumulators. Reset the update slots as we go.
         accumulators = state.accumulators.copy()
         updates = state.updates.copy()
 
         for name, accumulator_value in accumulators.items():
-
             try:
 
                 update_value = updates[name]
@@ -119,11 +171,3 @@ class ACT_Controller:
             except Exception as err:
                 msg = f"An error occurred on iteration {iteration} regarding accumulator {name}: \n\n"
                 raise RuntimeError(msg) from err
-        iteration += 1
-
-
-
-
-
-
-        iteration = state.iteration

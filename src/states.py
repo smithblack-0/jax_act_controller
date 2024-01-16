@@ -1,3 +1,4 @@
+import jax
 from dataclasses import dataclass
 from typing import Dict, Optional, Any
 from jax import numpy as jnp
@@ -54,7 +55,7 @@ class ACTStates:
                          accumulators,
                          updates)
 
-
+    epsilon: float
     iteration: int
     residuals: jnp.ndarray
     probabilities: jnp.ndarray
@@ -66,6 +67,7 @@ class ACTStates:
 def accumulation_state_flatten(state: ACTStates) -> Any:
 
     output = []
+    output.append(state.epsilon)
     output.append(state.iteration)
     output.append(state.residuals)
     output.append(state.probabilities)
