@@ -42,9 +42,22 @@ class ACT_Controller(Immutable):
     is_completely_halted: If every batch element is halted, this is true
     is_any_halted: If at least one batch element is halted, this is true.
 
+
+
     ----- Methods -----
 
+    cache_update: A function that accepts a PyTree and should be called  once per
+                  act operation for each accumulator. Updates should be the same
+                  shape as the originally defined accumulator.
 
+                  It creates a new instance that stores the update to be integrated into
+                  the accumulator. These updates will be used once iterate_act is called.
+
+    iterate_act: A function that is called once updates are waiting in all accumulators, at the
+                 end of the act process. It is called with the halting probabilities. It uses the
+                 probabilities to update the accumulators and the cumulative probabilities.
+
+                 It also updates numerous other features.
 
 
 
@@ -178,7 +191,7 @@ class ACT_Controller(Immutable):
         return jnp.where(halted_batches, accumulator_value, new_accumulators)
 
     # Main loop logic
-    def cache_accumulator(self,
+    def cache_update(self,
                           name: str,
                           item: PyTree
                           )->'ACT_Controller':
