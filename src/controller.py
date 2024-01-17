@@ -4,7 +4,7 @@ needed to create an ACT instance. It also includes
 some degree of error checking.
 """
 
-from typing import Optional, List, Dict, Union, Any, Tuple
+from typing import Optional, List, Dict, Union, Any, Tuple, Callable
 from dataclasses import dataclass
 from src.states import ACTStates
 from src.immutable import Immutable
@@ -29,11 +29,16 @@ class ACT_Controller(Immutable):
     The controller is completely immutable. Once initialized, if a method
     producing a state change is called, a new controller is returned instead.
 
-    ----- Fields ----
+    The class is designed to be provided wholesale as a return from a
+    builder.
+    
+
+    ----- Direct Properties
+
     probabilities: The cumulative probabilities for each batch element
     residuals: The residuals on each batch element
     iterations: The iteration each batch is on, or alternatively where
-    accumulators: The accumulated results
+    accumulators: The accumulated results, so far.
 
     ----- Properties ----
 
@@ -41,8 +46,6 @@ class ACT_Controller(Immutable):
     halted_batches: A bool tensor of batches that are halted. True means halted.
     is_completely_halted: If every batch element is halted, this is true
     is_any_halted: If at least one batch element is halted, this is true.
-
-
 
     ----- Methods -----
 
@@ -57,14 +60,57 @@ class ACT_Controller(Immutable):
                  end of the act process. It is called with the halting probabilities. It uses the
                  probabilities to update the accumulators and the cumulative probabilities.
 
-                 It also updates numerous other features.
+                 It also updates numerous other features which are updated, such as iteration and
+                 residuals.
+    mask_halted_data:
 
+
+
+    output_and_reset: A function which will fetch and return the outputs of the
+                     ACT process. It also resets the halted act channels, in case
+                     there is any desire to continue again.
+
+                     Sections that have not reached halted status are masked with zeros.
+
+    ---- Usage ----
+
+    To use the controller
+
+    ----- Locking ----
+
+    One thing worth mentioning is that certain actions will corrupt the
+    tensors in the controller for data analysis purposes. These will result
+    in a returned controller in the 'locked' state. This means that functions,
+    like cache_update and iterate_act, that are used for actual act work stop
+    working and throw if called.
+
+    If you are having this issue, the class just saved you several hours of
+    debugging. You need to consume the class in view mode immediately, then
+    continue using the instance from beforehand.
+
+    For example, the following code will cause issues
+
+    ```
+    statistics = []
+    for ...:
+        ... your code
+        contr
+
+        if CONDITION:
+            controller = controller.mask_unhalted_data:
+
+
+    ```
 
 
     """
 
 
     # Direct properties
+
+    @property
+    def locked(self)->bool:
+        return self.state.is_locked
     @property
     def probabilities(self)->jnp.ndarray:
         return self.state.probabilities
@@ -98,6 +144,27 @@ class ACT_Controller(Immutable):
         return jnp.any(self.halted_batches)
 
     # Helper logic
+
+    @staticmethod
+    def _apply_mask(mask: jnp.ndarray,
+                    tensor: jnp.ndarray)->jnp.ndarray:
+        """
+        A helper function, this will unsqueeze the mask
+        until it is compatible with tensor, then multiply
+        the tensor by the mask
+
+        Notably, it unsqueezes from the left to the right
+
+        :param mask: The mask to apply
+        :param tensor: The tensor to maks
+        :return: The masked tensor
+        """
+        while len(mask.shape) < len(tensor.shape):
+            mask = mask[..., None]
+        return tensor*mask
+
+
+
     def _process_probabilities(self,
                                halting_probabilities: jnp.ndarray
                                )->Tuple[jnp.ndarray,
@@ -189,7 +256,22 @@ class ACT_Controller(Immutable):
 
         new_accumulators = accumulator_value + halting_probabilities * update_value
         return jnp.where(halted_batches, accumulator_value, new_accumulators)
-
+    def _check_if_locked(self):
+        if self.locked:
+            msg = f"""
+            An attempt was made to run ACT with a locked controller. 
+    
+            Calling any function other than cache_updates, reset_batches, or iterate_act will
+            immediately result in the returned controller being set into the locked
+            state. This prevents you from trying to continue with ACT on a controller
+            set in an information display mode.
+    
+            If you need to fetch information, and you need to continue act, then
+            just make a new controller with a different name, and keep the original controller
+            around
+            """
+            msg = textwrap.dedent(msg)
+            raise RuntimeError(msg)
     # Main loop logic
     def cache_update(self,
                           name: str,
@@ -205,11 +287,11 @@ class ACT_Controller(Immutable):
         :except: RuntimeError, if accumulator was already set.
         :return: New ACT_Controller with updated state
         """
-
+        self._check_if_locked()
         state = self.state
         if name not in state.updates:
             raise ValueError(f"Accumulator with name {name} was never setup")
-        if state.updates[name] != None:
+        if state.updates[name] is not None:
             raise RuntimeError(f"Accumulator with name {name} was already set this iteration!")
         update = state.updates.copy()
         update[name] = item
@@ -227,6 +309,7 @@ class ACT_Controller(Immutable):
         if halting_probabilities.shape != self.probabilities.shape:
             raise ValueError("provided and original shapes of halting probabilities do not match")
 
+        self._check_if_locked()
         # Compute and manage probability quantities.
         #
         # This includes clamping the halting probabilities, and
@@ -239,13 +322,33 @@ class ACT_Controller(Immutable):
 
         accumulators = self.accumulators.copy()
         updates = self.state.updates.copy()
-
-        for name, accumulator_value in accumulators.items():
+        for name in accumulators.keys():
             try:
-                update_value = updates[name]
-                accumulators[name] = self._update_accumulator(accumulator_value,
-                                                              update_value,
-                                                              halting_probabilities)
+                # Merging PyTrees turns out to be more difficult than
+                # expected.
+                #
+                # Jax, strangly, has no multitree map, which means walking through the
+                # nodes in parallel across multiple trees is not possible. Instead, we flatten
+                # both trees deterministically, walk through the leaves, and then restore the
+                # original structure.
+
+                accumulator_tree = accumulators[name]
+                update_tree = updates[name]
+                treedef = jax.tree_util.tree_structure(accumulator_tree)
+
+                accumulator_leaves = jax.tree_util.tree_flatten(accumulator_tree)
+                update_leaves = jax.tree_util.tree_flatten(update_tree)
+
+                assert len(accumulator_leaves) == len(update_leaves) # Just a quick sanity check.
+
+                new_leaves = []
+                for accumulator_leaf, update_leaf in zip(accumulator_leaves, update_leaves):
+                    new_accumulator = self._update_accumulator(accumulator_leaf,
+                                                               update_leaf,
+                                                               halting_probabilities)
+                    new_leaves.append(new_accumulator)
+
+                accumulators[name] = jax.tree_unflatten(treedef, new_leaves)
                 updates[name] = None # Resets update slot, so we do not think an update was already done.
             except Exception as err:
                 msg = f"An error occurred regarding accumulator {name}: \n\n"
@@ -268,12 +371,150 @@ class ACT_Controller(Immutable):
         )
         return ACT_Controller(state)
 
+        jax.tree_util.tree_map()
+
+    ## Display functions
+    #
+    # These are used primarily to make it easy to look at
+    # and use your gathered data and statistics.
+    def mask_data(self,
+                  mask: jnp.ndarray,
+                  lock: bool = True,
+                  )->'ACT_Controller':
+        """
+        A helper function for creating controllers with masked
+        data.
+
+        A mask must be of the same shape as the batch shape,
+        or the probability shape. So long as it is, it will
+        be applied to each and every tensor inside the controller,
+        then a new controller with the new tensors will be
+        returned.
+
+        This can be useful for isolating particular features for examination.
+        However, by default, it results in the locking of the controller. This
+        can be overridden, but exists to prevent a user from trying to use the
+        returned controller to continue the act process.
+
+        :param mask: The mask to apply. Must have batch shape
+        :param lock: Whether to lock the new controller.
+        :return: A new ACT_Controller instance where the mask has been applied.
+        :raise: ValueError, if the mask and batch shape are not the same
+        :raise: ValueError, if you attempt to mask before committing all updates.
+        """
+
+        if mask.shape != self.probabilities.shape:
+            raise ValueError(f"Mask of shape {mask.shape} does not match batch shape of {self.probabilities.shape}")
+        for item in self.state.updates:
+            if item is not None:
+                raise ValueError(f"Data mask was attempted while updates were not committed.")
+
+
+        iterations = self.iterations*mask
+        residuals = self.residuals*mask
+        probabilities = self.probabilities*mask
+
+        update_func = lambda tree : self._apply_mask(mask, tree)
+        accumulators = {name : jax.tree_util.tree_map(update_func, value)
+                        for name, value
+                        in self.accumulators.items()}
+
+        state = self.state.replace(is_locked=lock,
+                                   iterations=iterations,
+                                   residuals = residuals,
+                                   probabilities = probabilities,
+                                   accumulators= accumulators
+                                   )
+
+        return ACT_Controller(state)
+    def mask_unhalted_data(self)->'ACT_Controller':
+        """
+        Creates a new controller, in which all tensors which
+        are corrolated with unhalted data are masked by filling with
+        zeros.
+
+        :return: A ACT_Controller instance, where the tensors are masked. To
+                prevent inadvertant usage, the controller is blocked from
+                additional act action.
+
+        :raise: ValueError, if you attempt to mask before commit ing all updates
+        """
+
+        unhalted_selector = ~self.halted_batches
+        return self.mask_data(unhalted_selector)
+
+    def mask_halted_data(self) -> 'ACT_Controller':
+        """
+        Creates a new controller, in which all tensors which
+        are corrolated with halted data are masked by filling with
+        zeros.
+
+        :return: A ACT_Controller instance, where the tensors are masked. To
+                prevent inadvertant usage, the controller is blocked from
+                additional act action.
+
+        :raise: ValueError, if you attempt to mask before commit ing all updates
+        """
+
+        halted_selector = self.halted_batches
+        return self.mask_data(halted_selector)
+
+    def reset_batches(self)->'ACT_Controller':
+        """
+        Resets the batches that are currently halted. Accumulators
+        are set to their default values, and probabilities are set
+        to zero.
+
+        :return: An ACT_Controller instance with halted batches
+                 reset to default
+        """
+        self._check_if_locked()
+
+        unhalted_batch_selector = ~self.halted_batches
+
+        # Multiplying by zero resets the probabilities and iteration statistics.
+
+        iterators = self.iterations*unhalted_batch_selector
+        probabilities = self.probabilities*unhalted_batch_selector
+        residuals = self.residuals*unhalted_batch_selector
+
+        accumulators = {}
+        for name in self.accumulators.keys():
+            # It is frusterating to map behavior over PyTrees due to
+            # a lack of a multitree map in jax. Instead, we flatten
+            # both trees, perform updates on the leaves, and
+            # then reconstruct the leaves. The actual update consists
+            # of replacing the accumulator with the defaults on the
+            # tensors marked as true.
+
+            accumulator = self.accumulators[name]
+            default = self.state.defaults[name]
+            treedef = jax.tree_util.tree_structure(accumulator)
+
+            accumulator_leaves = jax.tree_util.tree_flatten(accumulator)
+            default_leaves = jax.tree_util.tree_flatten(default)
+
+            new_leaves = []
+            for accumulator_leaf, default_leaf in zip(accumulator_leaves, default_leaves):
+                new_tensor = jnp.where(unhalted_batch_selector, accumulator_leaf, default_leaf)
+                new_leaves.append(new_tensor)
+
+            accumulator = jax.tree_unflatten(treedef, new_leaves)
+            accumulators[name] = accumulator
+
+        # Create the new state, return the new
+        # controller
+
+        state = self.state.replace(
+            residuals=residuals,
+            probabilities=probabilities,
+            iterators=iterators,
+            accumulators=accumulators
+        )
+
+        return ACT_Controller(state)
+
     def __init__(self, state: ACTStates):
         super().__init__()
         self.state = state
         self.lock()
-
-
-
-
-

@@ -21,6 +21,7 @@ class ACTStates:
 
     """
     def replace(self,
+                is_locked: Optional[bool] = None,
                 iterations: Optional[jnp.ndarray] = None,
                 residuals: Optional[jnp.ndarray] = None,
                 probabilities: Optional[jnp.ndarray] = None,
@@ -30,13 +31,10 @@ class ACTStates:
         """
         Replace one or more feature, while leaving everything else
         the exact same.
-
-        :param residuals:
-        :param probabilities:
-        :param accumulators:
-        :param updates:
         :return: A new ACT states
         """
+        if is_locked is None:
+            is_locked = self.is_locked
         if iterations is None:
             iterations = self.iterations
         if residuals is None:
@@ -48,15 +46,17 @@ class ACTStates:
         if updates is None:
             updates = self.updates
 
-        return ACTStates(iterations,
+        return ACTStates(is_locked,
+                         self.epsilon,
+                         iterations,
                          residuals,
                          probabilities,
                          self.defaults,
                          accumulators,
                          updates)
-
+    is_locked: bool
     epsilon: float
-    iteration: jnp.ndarray
+    iterations: jnp.ndarray
     residuals: jnp.ndarray
     probabilities: jnp.ndarray
     defaults: Dict[str, PyTree]
@@ -64,11 +64,12 @@ class ACTStates:
     updates: Dict[str, Optional[PyTree]]
 
 
-def accumulation_state_flatten(state: ACTStates) -> Any:
+def state_flatten(state: ACTStates) -> Any:
 
     output = []
+    output.append(state.is_locked)
     output.append(state.epsilon)
-    output.append(state.iteration)
+    output.append(state.iterations)
     output.append(state.residuals)
     output.append(state.probabilities)
     output.append(state.defaults)
@@ -77,7 +78,7 @@ def accumulation_state_flatten(state: ACTStates) -> Any:
     return output, None
 
 
-def accumulation_state_unflatten(aux_data: Any, flat_state: Any) -> ACTStates:
+def state_unflatten(aux_data: Any, flat_state: Any) -> ACTStates:
     return ACTStates(*flat_state)
 
-jax.tree_util.register_pytree_node(ACTStates, accumulation_state_flatten, accumulation_state_unflatten)
+jax.tree_util.register_pytree_node(ACTStates, state_flatten, state_unflatten)

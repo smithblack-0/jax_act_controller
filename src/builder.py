@@ -10,22 +10,9 @@ import jax.tree_util
 import textwrap
 from jax import numpy as jnp
 
-from src.states import ACTStates, accumulation_state_flatten, accumulation_state_unflatten
+from src.states import ACTStates
 from src.types import PyTree
-
-# Create the act state dataclasses and register them with pytree.
-#
-# Act state collections include residuals collections,
-# probability collections, and state collections.
-#
-# They also include process specific metadata.
-#
-# These are registered and stored separately.
-#
-# It is registered as a pytree node to ease further computations
-
-
-# Work on the state builder itself.
+from src.controller import ACT_Controller
 
 class StateBuilder:
     """
