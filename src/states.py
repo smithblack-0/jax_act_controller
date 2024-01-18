@@ -22,7 +22,6 @@ class ACTStates:
     """
     def replace(self,
                 epsilon: Optional[float] = None,
-                is_locked: Optional[bool] = None,
                 iterations: Optional[jnp.ndarray] = None,
                 residuals: Optional[jnp.ndarray] = None,
                 probabilities: Optional[jnp.ndarray] = None,
@@ -36,8 +35,7 @@ class ACTStates:
         """
         if epsilon is None:
             epsilon = self.epsilon
-        if is_locked is None:
-            is_locked = self.is_locked
+
         if iterations is None:
             iterations = self.iterations
         if residuals is None:
@@ -49,15 +47,13 @@ class ACTStates:
         if updates is None:
             updates = self.updates
 
-        return ACTStates(is_locked,
-                         epsilon,
+        return ACTStates(epsilon,
                          iterations,
                          residuals,
                          probabilities,
                          self.defaults,
                          accumulators,
                          updates)
-    is_locked: bool
     epsilon: float
     iterations: jnp.ndarray
     residuals: jnp.ndarray
@@ -70,7 +66,6 @@ class ACTStates:
 def state_flatten(state: ACTStates) -> Any:
 
     output = []
-    output.append(state.is_locked)
     output.append(state.epsilon)
     output.append(state.iterations)
     output.append(state.residuals)
@@ -85,3 +80,9 @@ def state_unflatten(aux_data: Any, flat_state: Any) -> ACTStates:
     return ACTStates(*flat_state)
 
 jax.tree_util.register_pytree_node(ACTStates, state_flatten, state_unflatten)
+
+
+@dataclass
+class ViewerConfig:
+    mask: jnp.ndarray
+

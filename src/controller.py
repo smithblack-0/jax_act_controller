@@ -7,6 +7,7 @@ some degree of error checking.
 from typing import Optional, Any, Tuple, Callable
 from src.states import ACTStates
 from src.immutable import Immutable
+from src import utils
 import jax.tree_util
 import textwrap
 from jax import numpy as jnp
@@ -76,31 +77,6 @@ class ACT_Controller(Immutable):
     channels using a factory method, the provided builder, or by hand. Then,
     you use
 
-    ----- Locking ----
-
-    One thing worth mentioning is that certain actions will corrupt the
-    tensors in the controller for data analysis purposes. These will result
-    in a returned controller in the 'locked' state. This means that functions,
-    like cache_update and iterate_act, that are used for actual act work stop
-    working and throw if called.
-
-    If you are having this issue, the class just saved you several hours of
-    debugging. You need to consume the class in view mode immediately, then
-    continue using the instance from beforehand.
-
-    For example, the following code will cause issues
-
-    ```
-    statistics = []
-    for ...:
-        ... your code
-        contr
-
-        if CONDITION:
-            controller = controller.mask_unhalted_data:
-
-
-    ```
 
 
     """
@@ -108,9 +84,6 @@ class ACT_Controller(Immutable):
 
     # Direct properties
 
-    @property
-    def is_locked(self)->bool:
-        return self.state.is_locked
     @property
     def probabilities(self)->jnp.ndarray:
         return self.state.probabilities
@@ -144,82 +117,6 @@ class ACT_Controller(Immutable):
         return jnp.any(self.halted_batches)
 
     # Helper logic
-    @staticmethod
-    def _setup_left_broadcast(tensor: jnp.ndarray,
-                              target: jnp.ndarray
-                              ) -> jnp.ndarray:
-        """
-        Sets up tensor by unsqueezing dimensions for
-        a left broadcast with the target.
-
-        Returns the unsqueezed tensor.
-
-        :param tensor: The tensor to expand
-        :param target: The target whose length to match
-        :return: The unsqueezed tensor
-        """
-
-        assert len(tensor.shape) <= len(target.shape)
-        while len(tensor.shape) < len(target.shape):
-            tensor = tensor[..., None]
-        return tensor
-    @staticmethod
-    def _merge_pytrees(function: Callable[[jnp.ndarray,
-                                          jnp.ndarray],
-                                         jnp.ndarray],
-                      primary_tree: PyTree,
-                      auxilary_tree: PyTree,
-                      )->PyTree:
-        """
-        Used to merge two pytrees together.
-
-        This deterministically walks the primary and auxilary
-        trees, then calls function when like leaves are reached. The
-        results are created into a new tree.
-
-        :param function: A function that accepts first a primary leaf, then a auxilary leaf
-        :param primary_tree: The primary tree to draw from
-        :param auxilary_tree: The auxilary tree to draw from
-        :return: A new PyTree
-        """
-        # Merging PyTrees turns out to be more difficult than
-        # expected.
-        #
-        # Jax, strangly, has no multitree map, which means walking through the
-        # nodes in parallel across multiple trees is not possible. Instead, we flatten
-        # both trees deterministically, walk through the leaves, and then restore the
-        # original structure.
-
-        treedef = jax.tree_util.tree_structure(primary_tree)
-        primary_leaves = jax.tree_util.tree_flatten(primary_tree)[0]
-        auxilary_leaves = jax.tree_util.tree_flatten(auxilary_tree)[0]
-
-        assert len(primary_leaves) == len(auxilary_leaves)  # Just a quick sanity check.
-
-        new_leaves = []
-        for primary_leaf, aux_leaf in zip(primary_leaves, auxilary_leaves):
-            update = function(primary_leaf, aux_leaf)
-            new_leaves.append(update)
-
-        return jax.tree_util.tree_unflatten(treedef, new_leaves)
-    def _check_if_locked(self):
-        if self.locked:
-            msg = f"""
-            An attempt was made to run ACT with a locked controller. 
-
-            Calling any function other than cache_updates, reset_batches, or iterate_act will
-            immediately result in the returned controller being set into the locked
-            state. This prevents you from trying to continue with ACT on a controller
-            set in an information display mode.
-
-            If you need to fetch information, and you need to continue act, then
-            just make a new controller with a different name, and keep the original controller
-            around
-            """
-            msg = textwrap.dedent(msg)
-            raise RuntimeError(msg)
-
-
 
     def _process_probabilities(self,
                                halting_probabilities: jnp.ndarray
@@ -304,8 +201,8 @@ class ACT_Controller(Immutable):
         # We will often need to unsqueeze on the last dimension to make this
         # happen. This section accomplishes this.
         halted_batches = self.halted_batches
-        halting_probabilities = self._setup_left_broadcast(halting_probabilities, accumulator_value)
-        halted_batches = self._setup_left_broadcast(halted_batches, accumulator_value)
+        halting_probabilities = utils.setup_left_broadcast(halting_probabilities, accumulator_value)
+        halted_batches = utils.setup_left_broadcast(halted_batches, accumulator_value)
 
         # We weight then add. The result is then created into an update, but
         # only accumulators which have not already reached a halting state get updated.
@@ -329,7 +226,6 @@ class ACT_Controller(Immutable):
         :except: RuntimeError, if accumulator was already set.
         :return: New ACT_Controller with updated state
         """
-        self._check_if_locked()
         state = self.state
         if name not in state.updates:
             raise ValueError(f"Accumulator with name {name} was never setup")
@@ -351,7 +247,6 @@ class ACT_Controller(Immutable):
         if halting_probabilities.shape != self.probabilities.shape:
             raise ValueError("provided and original shapes of halting probabilities do not match")
 
-        self._check_if_locked()
         # Compute and manage probability quantities.
         #
         # This includes clamping the halting probabilities, and
@@ -379,7 +274,7 @@ class ACT_Controller(Immutable):
                                                                             update_leaf,
                                                                             halting_probabilities
                                                                             )
-                new_accumulator = self._merge_pytrees(update_function,
+                new_accumulator = utils.merge_pytrees(update_function,
                                                       accumulator_tree,
                                                       update_tree
                                                     )
@@ -455,8 +350,7 @@ class ACT_Controller(Immutable):
                         for name, value
                         in self.accumulators.items()}
 
-        state = self.state.replace(is_locked=lock,
-                                   iterations=iterations,
+        state = self.state.replace(iterations=iterations,
                                    residuals = residuals,
                                    probabilities = probabilities,
                                    accumulators= accumulators
@@ -504,7 +398,6 @@ class ACT_Controller(Immutable):
         :return: An ACT_Controller instance with halted batches
                  reset to default
         """
-        self._check_if_locked()
 
         unhalted_batch_selector = ~self.halted_batches
 
@@ -525,7 +418,7 @@ class ACT_Controller(Immutable):
                                                                   accumulator,
                                                                   default
                                                                   )
-            new_accumulator = self._merge_pytrees(update_func,
+            new_accumulator = utils.merge_pytrees(update_func,
                                                   accumulator,
                                                   default)
             accumulators[name] = new_accumulator
@@ -541,6 +434,7 @@ class ACT_Controller(Immutable):
         )
 
         return ACT_Controller(state)
+
     # Saving, loading, and pytrees
     def save(self)->ACTStates:
         return self.state
