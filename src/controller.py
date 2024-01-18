@@ -74,7 +74,9 @@ class ACT_Controller(Immutable):
 
     ---- Usage ----
 
-    To use the controller
+    To use the controller, you will first need to setup the accumulation
+    channels using a factory method, the provided builder, or by hand. Then,
+    you use
 
     ----- Locking ----
 
@@ -370,8 +372,6 @@ class ACT_Controller(Immutable):
             updates = updates,
         )
         return ACT_Controller(state)
-
-        jax.tree_util.tree_map()
 
     ## Display functions
     #
