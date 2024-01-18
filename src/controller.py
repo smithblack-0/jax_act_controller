@@ -4,10 +4,14 @@ needed to create an ACT instance. It also includes
 some degree of error checking.
 """
 
-from typing import Optional, Any, Tuple, Callable
+from typing import Optional, Any, Tuple
+
+from src.viewer import ACT_Viewer
 from src.states import ACTStates
 from src.immutable import Immutable
 from src import utils
+
+
 import jax.tree_util
 import textwrap
 from jax import numpy as jnp
@@ -65,8 +69,11 @@ class ACT_Controller(Immutable):
 
                  It also updates numerous other features which are updated, such as iteration and
                  residuals.
-    reset: A function that places halted act channels back into their default
-           condition. It will return a new controller instance.
+    reset_batches: A function that places halted act channels back into their default
+                   condition. It will return a new controller instance.
+
+    make_viewer: A function which returns a "viewer" object. That object is designed to assist with gathering
+                 and accumulating
 
     ---- Usage ----
 
@@ -345,6 +352,16 @@ class ACT_Controller(Immutable):
         )
 
         return ACT_Controller(state)
+
+    # Viewing and other functionalities
+
+    def make_viewer(self)->ACT_Viewer:
+        """
+        Creates an act viewer for advanced viewing of
+        tensors.
+        :return: An ACT Viewer with the same tensors as the controller
+        """
+        return ACT_Viewer(self.state)
 
     # Saving, loading, and pytrees
     def save(self)->ACTStates:

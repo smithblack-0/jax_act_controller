@@ -1,121 +1,121 @@
+import jax
+from jax import numpy as jnp
+
+from typing import Dict
+
+from src.types import PyTree
 from src.immutable import Immutable
 from src.states import ACTStates, ViewerConfig
 from src import utils
-from jax import numpy as jnp
+
 
 class ACT_Viewer(Immutable):
+    """
+    A class used to isolate views of act features.
 
-    def _apply_mask(self,
-                    mask: jnp.ndarray,
-                    tensor: jnp.ndarray):
-        """
-        Applies the given mask to the given tensor by means of
-        multiplication. Broadcasts to fit
+    It is primarily useful for extracting information associated
+    only with particular dimensions.
+    """
 
-        :return: The tensor, after the mask is applied
-        """
-
-        mask = utils.setup_left_broadcast(mask, tensor)
-        return mask*tensor
-
+    # Defined identically to controller: Properties.
     @property
-    def probabilities(self):
-        return utils.apply_mask(self.configuration.mask, self.states.probabilities)
+    def probabilities(self)->jnp.ndarray:
+        return self.state.probabilities
+    @property
+    def residuals(self)->jnp.ndarray:
+        return self.state.residuals
+    @property
+    def iterations(self)->jnp.ndarray:
+        return self.state.iterations
+    @property
+    def accumulators(self)->Dict[str, PyTree]:
+        return self.state.accumulators
+    @property
+    def halt_threshold(self)->float:
+        return 1-self.state.epsilon
+    @property
+    def halted_batches(self)->jnp.ndarray:
+        return self.probabilities > self.halt_threshold
 
+    # View functions and functionality
+    def mask_data(self,
+              mask: jnp.ndarray,
+              ) -> 'ACT_Viewer':
+        """
+        A function that will create a new viewer with data that has been masked.
 
+        A mask must be of the same shape as the batch shape,
+        or the probability shape. So long as it is, it will
+        be applied to each and every tensor inside the controller,
+        then a new controller with the new tensors will be
+        returned.
 
-        ## Display functions
-        #
-        # These are used primarily to make it easy to look at
-        # and use your gathered data and statistics.
-        def mask_data(self,
-                      mask: jnp.ndarray,
-                      lock: bool = True,
-                      ) -> 'ACT_Controller':
-            """
-            A helper function for creating controllers with masked
-            data.
+        This can be useful for isolating particular features for examination.
 
-            A mask must be of the same shape as the batch shape,
-            or the probability shape. So long as it is, it will
-            be applied to each and every tensor inside the controller,
-            then a new controller with the new tensors will be
-            returned.
+        :param mask: The mask to apply. Must have batch shape
+        :param lock: Whether to lock the new controller.
+        :return: A new ACT_Controller instance where the mask has been applied.
+        :raise: ValueError, if the mask and batch shape are not the same
+        :raise: ValueError, if you attempt to mask before committing all updates.
+        """
+        if mask.dtype != jnp.bool_:
+            raise ValueError(f"Mask was not made up of bool dtypes.")
 
-            This can be useful for isolating particular features for examination.
-            However, by default, it results in the locking of the controller. This
-            can be overridden, but exists to prevent a user from trying to use the
-            returned controller to continue the act process.
+        if mask.shape != self.probabilities.shape:
+            raise ValueError(f"Mask of shape {mask.shape} does not match batch shape of {self.probabilities.shape}")
 
-            :param mask: The mask to apply. Must have batch shape
-            :param lock: Whether to lock the new controller.
-            :return: A new ACT_Controller instance where the mask has been applied.
-            :raise: ValueError, if the mask and batch shape are not the same
-            :raise: ValueError, if you attempt to mask before committing all updates.
-            """
+        iterations = self.iterations * mask
+        residuals = self.residuals * mask
+        probabilities = self.probabilities * mask
 
-            if mask.shape != self.probabilities.shape:
-                raise ValueError(f"Mask of shape {mask.shape} does not match batch shape of {self.probabilities.shape}")
-            for item in self.state.updates:
-                if item is not None:
-                    raise ValueError(f"Data mask was attempted while updates were not committed.")
+        def update_func(leaf: jnp.ndarray):
+            broadcastable_mask = utils.setup_left_broadcast(mask, leaf)
+            return broadcastable_mask*leaf
+        accumulators = {name: jax.tree_util.tree_map(update_func, value)
+                        for name, value
+                        in self.accumulators.items()}
 
-            iterations = self.iterations * mask
-            residuals = self.residuals * mask
-            probabilities = self.probabilities * mask
+        state = self.state.replace(iterations=iterations,
+                                   residuals=residuals,
+                                   probabilities=probabilities,
+                                   accumulators=accumulators
+                                   )
 
-            # TODO: Fix
+        return ACT_Viewer(state)
 
-            update_func = lambda tree: self._apply_mask(mask, tree)
-            accumulators = {name: jax.tree_util.tree_map(update_func, value)
-                            for name, value
-                            in self.accumulators.items()}
+    def in_progress_only(self) -> 'ACT_Viewer':
+        """
+        Creates a new viewer, in which all tensors that had
+        reached the halted state are masked away. As such, you
+        only see the in progress entries.
 
-            state = self.state.replace(iterations=iterations,
-                                       residuals=residuals,
-                                       probabilities=probabilities,
-                                       accumulators=accumulators
-                                       )
+        :return: A ACT_Controller instance, where the tensors are masked. To
+                prevent inadvertant usage, the controller is blocked from
+                additional act action.
+        """
 
-            return ACT_Controller(state)
+        unhalted_selector = ~self.halted_batches
+        return self.mask_data(unhalted_selector)
 
-        def mask_unhalted_data(self) -> 'ACT_Controller':
-            """
-            Creates a new controller, in which all tensors which
-            are corrolated with unhalted data are masked by filling with
-            zeros.
+    def results_only(self) -> 'ACT_Viewer':
+        """
+        Creates a new viewer instance, in which all tensors which
+        are corrolated with halted data are masked by filling with
+        zeros. What is left is only unhalted information.
 
-            :return: A ACT_Controller instance, where the tensors are masked. To
-                    prevent inadvertant usage, the controller is blocked from
-                    additional act action.
+        The displayed tensors then become suitable for accumulator in
+        external processes.
 
-            :raise: ValueError, if you attempt to mask before commit ing all updates
-            """
+        :return: A ACT_Viewer instance, where the tensors are masked. To
+                prevent inadvertant usage, the controller is blocked from
+                additional act action.
+        """
 
-            unhalted_selector = ~self.halted_batches
-            return self.mask_data(unhalted_selector)
-
-        def mask_halted_data(self) -> 'ACT_Controller':
-            """
-            Creates a new controller, in which all tensors which
-            are corrolated with halted data are masked by filling with
-            zeros.
-
-            :return: A ACT_Controller instance, where the tensors are masked. To
-                    prevent inadvertant usage, the controller is blocked from
-                    additional act action.
-
-            :raise: ValueError, if you attempt to mask before commit ing all updates
-            """
-
-            halted_selector = self.halted_batches
-            return self.mask_data(halted_selector)
-
-    def __init__(self,
-                 state: ACTStates,
-                 configuration: ViewerConfig):
+        halted_selector = self.halted_batches
+        return self.mask_data(halted_selector)
+    def __init__(self, state: ACTStates):
         super().__init__()
-        self.states = state
+        self.state = state
         self.make_immutable()
 
 

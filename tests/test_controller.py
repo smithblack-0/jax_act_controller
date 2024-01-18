@@ -121,7 +121,6 @@ class test_properties(unittest.TestCase):
         controller = ACT_Controller(mock_state)
         self.assertTrue(jnp.all(expected_halted == controller.halted_batches))
 
-
 class test_private_helpers(unittest.TestCase):
     """
     Test that the private helper functions used by the
@@ -240,5 +239,5 @@ class test_main_logic(unittest.TestCase):
     Test the main pieces of ACT logic that are used to perform
     act computation individually.
     """
-    def test_a
+    def test_act
 
