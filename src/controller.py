@@ -68,16 +68,13 @@ class ACT_Controller(Immutable):
     reset: A function that places halted act channels back into their default
            condition. It will return a new controller instance.
 
-    ---- Display Methods -----
-
-
     ---- Usage ----
 
     To use the controller, you will first need to setup the accumulation
-    channels using a factory method, the provided builder, or by hand. Then,
-    you use
+    channels, likely using a factory method or the provided builder.
 
-
+    You will then perform an act process involving generating the accumulation
+    updates, and store them away for each iteration.
 
     """
 
