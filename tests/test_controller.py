@@ -9,7 +9,7 @@ from jax import numpy as jnp
 from src.states import ACTStates
 from src.controller import ACT_Controller
 
-
+SHOW_ERROR_MESSAGES = True
 def make_empty_state_mockup() -> ACTStates:
     return ACTStates(
         is_locked=None,
@@ -141,17 +141,49 @@ class test_private_helpers(unittest.TestCase):
     We mock up data to represent a condition, then see if the
     helpers act appropriately to produce a new state
     """
-    def test_apply_mask(self):
-        """ Test that apply mask will unsqueeze then apply a mask as is appropriate"""
-        # The important thing here is that the mask should broadcast
-        # from the first dimension in.
+    def test_setup_left_broadcast(self):
+        """ Test the broadcast helper works properly"""
+        item1 = random.randn(2, 5)
+        item2 = random.randn(2, 5, 6, 8)
+        item3 = random.randn(2)
 
-        mask = random.randn(2, 10) > 0
-        data1 = random.randn(2, 10)
-        data2 = random.randn(2, 10, 3, 14)
+        # Test same length works
+        setup = ACT_Controller._setup_left_broadcast(item1, item1)
+        setup + item1
 
-        ACT_Controller._apply_mask(mask, data1)
-        ACT_Controller._apply_mask(mask, data2)
+        # Test making it broader works
+        setup = ACT_Controller._setup_left_broadcast(item1, item2)
+        item2 + setup
+
+        #Test simple throw works
+        with self.assertRaises(AssertionError):
+            ACT_Controller._setup_left_broadcast(item1, item3)
+
+    def test_merge_pytrees(self):
+        """
+        Test that the function responsible for pytree merging actually
+        works as expected
+        """
+
+        tensor = jnp.array([0.0, 1.0, 1.2, 0.1])
+        tensor2 = jnp.array([2.0, 1.0, 0.2, 0.1])
+
+        # Test edge case: Only leafs
+
+        operator = lambda a, b : a - b
+        expected_tensor = jnp.array([-2.0, 0, 1.0, 0.0])
+        outcome = ACT_Controller._merge_pytrees(operator, tensor, tensor2)
+        self.assertTrue(jnp.allclose(expected_tensor, outcome))
+
+        # Test tree case.
+
+        tree = {"item" : tensor, "item2" : tensor, "item3" : [tensor, tensor]}
+        tree2 = {"item" : tensor2, "item2" : tensor2, "item3" : [tensor2, tensor2]}
+        expected  = {"item" : expected_tensor, "item2" : expected_tensor,
+                   "item3" : [expected_tensor, expected_tensor]}
+
+        outcome = ACT_Controller._merge_pytrees(operator, tree, tree2)
+        self.assertTrue(jnp.allclose(outcome['item'], expected['item']))
 
     def test_process_probabilities(self):
         """ Test that probability processing is acting as expected"""
@@ -159,11 +191,14 @@ class test_private_helpers(unittest.TestCase):
         probabilities = jnp.array([0.4, 0.2, 0.7])
         halting_probs = jnp.array([0.3, 0.5, 0.8])
         residuals = jnp.array([0.0, 0.0, 0.0])
+        epsilon = 0.1
 
         # This has an epsilon that will only force
         # 0.7 + 0.8 into residual mode.
+        #
+        # We have manually proceeded this example, and
+        # we see if it matches.
 
-        epsilon = 0.1
         state = make_empty_state_mockup()
         state = state.replace(epsilon=epsilon,
                               probabilities=probabilities,
@@ -177,11 +212,85 @@ class test_private_helpers(unittest.TestCase):
         halting_probs, residuals, probabilities = controller._process_probabilities(
                                                                 halting_probs
                                                                 )
-        print(halting_probs)
-        self.assertTrue(jnp.all(halting_probs==expected_halting_probabilities))
-        self.assertTrue(jnp.all(probabilities==expected_probabilities))
-        self.assertTrue(jnp.all(residuals == expected_residuals))
+
+        self.assertTrue(jnp.allclose(halting_probs, expected_halting_probabilities))
+        self.assertTrue(jnp.allclose(probabilities, expected_probabilities))
+        self.assertTrue(jnp.allclose(residuals, expected_residuals))
+    def test_update_accumulators(self):
+        """ Test that update accumulators works in simple and pytree cases"""
 
 
-        halting_probs = 0.45
 
+        # Test validation logic: Detect when update was not ready to go
+
+        epsilon = 0.1
+        probabilities = jnp.array([0.1, 1.0])
+        accumulator = jnp.array([[3.0, 4.0, -1.0],[0.7, 0.3, 0.5]])
+        update = None
+        halting_probabilities = jnp.array([0.6, 0.3])
+
+        with self.assertRaises(RuntimeError) as err:
+            state = make_empty_state_mockup()
+            state = state.replace(epsilon = epsilon,
+                                  probabilities=probabilities)
+
+            mocked_controller = ACT_Controller(state)
+            mocked_controller._update_accumulator(accumulator,
+                                                  update,
+                                                  halting_probabilities)
+        if SHOW_ERROR_MESSAGES:
+            print("Exception from test_update_accumulator: No cached update")
+            print(err.exception)
+
+        # Test differing shapes error condition
+
+
+        epsilon = 0.1
+        probabilities = jnp.array([0.1, 1.0])
+        accumulator = jnp.array([[3.0, 4.0, -1.0], [0.7, 0.3, 0.5]])
+        update = jnp.array([0.0, 1.0, 2.0])
+        halting_probabilities = jnp.array([0.6, 0.3])
+
+        with self.assertRaises(RuntimeError) as err:
+            state = make_empty_state_mockup()
+            state = state.replace(epsilon=epsilon,
+                                  probabilities=probabilities)
+
+            mocked_controller = ACT_Controller(state)
+            mocked_controller._update_accumulator(accumulator,
+                                                  update,
+                                                  halting_probabilities)
+        if SHOW_ERROR_MESSAGES:
+            print("Exception from test_update_accumulator: Update shape different")
+            print(err.exception)
+
+        # Test that an actual update follows the correct logic
+        #
+        # It should multiply the update by the halting probabilities and
+        # add. However, this should only occur when the halting probabilities
+        # have not reached the exhausted state.
+
+        epsilon = 0.1
+        probabilities = jnp.array([0.1, 1.0])
+        accumulator = jnp.array([[3.0, 4.0, -1.0], [0.7, 0.3, 0.5]])
+        update = jnp.array([[2.0, 1.0, 0.1],[0.2, 10.0, 11.0]])
+        halting_probabilities = jnp.array([0.5, 0.3])
+        expected_output = jnp.array([[4.0, 4.5, -0.95],[0.7,0.3,0.5]])
+
+        state = make_empty_state_mockup()
+        state = state.replace(epsilon=epsilon,
+                              probabilities=probabilities)
+
+        mocked_controller = ACT_Controller(state)
+        outcome = mocked_controller._update_accumulator(accumulator,
+                                                        update,
+                                                        halting_probabilities
+                                                        )
+
+        self.assertTrue(jnp.allclose(outcome, expected_output))
+
+class test_main_logic(unittest.TestCase):
+    """
+    Test the main pieces of ACT logic that are used to perform
+    act computation individually.
+    """

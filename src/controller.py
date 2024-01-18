@@ -4,8 +4,7 @@ needed to create an ACT instance. It also includes
 some degree of error checking.
 """
 
-from typing import Optional, List, Dict, Union, Any, Tuple, Callable
-from dataclasses import dataclass
+from typing import Optional, Any, Tuple, Callable
 from src.states import ACTStates
 from src.immutable import Immutable
 import jax.tree_util
@@ -30,7 +29,7 @@ class ACT_Controller(Immutable):
     producing a state change is called, a new controller is returned instead.
 
     The class is designed to be provided wholesale as a return from a
-    builder.
+    builder. It would be very rare for a user to directly configure the state.
     
 
     ----- Direct Properties
@@ -47,7 +46,10 @@ class ACT_Controller(Immutable):
     is_completely_halted: If every batch element is halted, this is true
     is_any_halted: If at least one batch element is halted, this is true.
 
-    ----- Methods -----
+    ----- Main Methods -----
+
+    Main methods are designed to be used as part of your act
+    computation process.
 
     cache_update: A function that accepts a PyTree and should be called  once per
                   act operation for each accumulator. Updates should be the same
@@ -62,15 +64,11 @@ class ACT_Controller(Immutable):
 
                  It also updates numerous other features which are updated, such as iteration and
                  residuals.
-    mask_halted_data:
+    reset: A function that places halted act channels back into their default
+           condition. It will return a new controller instance.
 
+    ---- Display Methods -----
 
-
-    output_and_reset: A function which will fetch and return the outputs of the
-                     ACT process. It also resets the halted act channels, in case
-                     there is any desire to continue again.
-
-                     Sections that have not reached halted status are masked with zeros.
 
     ---- Usage ----
 
@@ -146,24 +144,80 @@ class ACT_Controller(Immutable):
         return jnp.any(self.halted_batches)
 
     # Helper logic
-
     @staticmethod
-    def _apply_mask(mask: jnp.ndarray,
-                    tensor: jnp.ndarray)->jnp.ndarray:
+    def _setup_left_broadcast(tensor: jnp.ndarray,
+                              target: jnp.ndarray
+                              ) -> jnp.ndarray:
         """
-        A helper function, this will unsqueeze the mask
-        until it is compatible with tensor, then multiply
-        the tensor by the mask
+        Sets up tensor by unsqueezing dimensions for
+        a left broadcast with the target.
 
-        Notably, it unsqueezes from the left to the right
+        Returns the unsqueezed tensor.
 
-        :param mask: The mask to apply
-        :param tensor: The tensor to maks
-        :return: The masked tensor
+        :param tensor: The tensor to expand
+        :param target: The target whose length to match
+        :return: The unsqueezed tensor
         """
-        while len(mask.shape) < len(tensor.shape):
-            mask = mask[..., None]
-        return tensor*mask
+
+        assert len(tensor.shape) <= len(target.shape)
+        while len(tensor.shape) < len(target.shape):
+            tensor = tensor[..., None]
+        return tensor
+    @staticmethod
+    def _merge_pytrees(function: Callable[[jnp.ndarray,
+                                          jnp.ndarray],
+                                         jnp.ndarray],
+                      primary_tree: PyTree,
+                      auxilary_tree: PyTree,
+                      )->PyTree:
+        """
+        Used to merge two pytrees together.
+
+        This deterministically walks the primary and auxilary
+        trees, then calls function when like leaves are reached. The
+        results are created into a new tree.
+
+        :param function: A function that accepts first a primary leaf, then a auxilary leaf
+        :param primary_tree: The primary tree to draw from
+        :param auxilary_tree: The auxilary tree to draw from
+        :return: A new PyTree
+        """
+        # Merging PyTrees turns out to be more difficult than
+        # expected.
+        #
+        # Jax, strangly, has no multitree map, which means walking through the
+        # nodes in parallel across multiple trees is not possible. Instead, we flatten
+        # both trees deterministically, walk through the leaves, and then restore the
+        # original structure.
+
+        treedef = jax.tree_util.tree_structure(primary_tree)
+        primary_leaves = jax.tree_util.tree_flatten(primary_tree)[0]
+        auxilary_leaves = jax.tree_util.tree_flatten(auxilary_tree)[0]
+
+        assert len(primary_leaves) == len(auxilary_leaves)  # Just a quick sanity check.
+
+        new_leaves = []
+        for primary_leaf, aux_leaf in zip(primary_leaves, auxilary_leaves):
+            update = function(primary_leaf, aux_leaf)
+            new_leaves.append(update)
+
+        return jax.tree_util.tree_unflatten(treedef, new_leaves)
+    def _check_if_locked(self):
+        if self.locked:
+            msg = f"""
+            An attempt was made to run ACT with a locked controller. 
+
+            Calling any function other than cache_updates, reset_batches, or iterate_act will
+            immediately result in the returned controller being set into the locked
+            state. This prevents you from trying to continue with ACT on a controller
+            set in an information display mode.
+
+            If you need to fetch information, and you need to continue act, then
+            just make a new controller with a different name, and keep the original controller
+            around
+            """
+            msg = textwrap.dedent(msg)
+            raise RuntimeError(msg)
 
 
 
@@ -189,7 +243,7 @@ class ACT_Controller(Immutable):
         # something that is going to be halted, but are not
         # currently halted, will halt in this iteration.
 
-        will_be_halted = halting_probabilities + self.probabilities > self.halt_threshold
+        will_be_halted = (halting_probabilities + self.probabilities) > self.halt_threshold
         newly_halting = will_be_halted & ~self.halted_batches
 
         # Master residuals are updated only the round that we
@@ -203,11 +257,7 @@ class ACT_Controller(Immutable):
         # where they will be halted. This ensures total probability can
         # never exceed one.
 
-        print(will_be_halted)
-        print(halting_probabilities)
-        print(raw_residuals)
-        halting_probabilities = jnp.where(will_be_halted, halting_probabilities, raw_residuals)
-        print(halting_probabilities)
+        halting_probabilities = jnp.where(will_be_halted, raw_residuals, halting_probabilities)
 
         # Finally, cumulative probabilities are updated to contain the sum
         # of the halting probabilities and the current cumulative probabilities
@@ -222,8 +272,9 @@ class ACT_Controller(Immutable):
                             halting_probabilities: jnp.ndarray
                             ) -> jnp.ndarray:
         """
-        Performs an update step using an accumulator, halting
-        probabilities, and the update.
+        Performs an update step using an accumulator leaf and an
+        update leaf, processing the halting probabilities
+        to match.
 
         :param accumulator_value: The current accumulator
         :param update_value: The value to include in the update
@@ -233,16 +284,16 @@ class ACT_Controller(Immutable):
 
         if update_value is None:
             msg = f"""
-            The accumulator was never updated during this act iteration.
-
-            It is impossible to proceed.
+            There was no cached update stored for this act iteration. This
+            makes forming an update impossible.
             """
+            msg = textwrap.dedent(msg)
             raise RuntimeError(msg)
 
         if accumulator_value.shape != update_value.shape:
             msg = f"""
-            Original accumulator of shape {accumulator_value.shape} does not match
-            update accumulator of shape {update_value.shape}. This is not allowed
+            Original accumulator leaf of shape {accumulator_value.shape} does not match
+            update accumulator leaf of shape {update_value.shape}. This is not allowed
             """
             msg = textwrap.dedent(msg)
             raise RuntimeError(msg)
@@ -253,31 +304,16 @@ class ACT_Controller(Immutable):
         # We will often need to unsqueeze on the last dimension to make this
         # happen. This section accomplishes this.
         halted_batches = self.halted_batches
-        while len(halting_probabilities.shape) < len(accumulator_value.shape):
-            halting_probabilities = halting_probabilities[..., None]
-            halted_batches = halted_batches[..., None]
+        halting_probabilities = self._setup_left_broadcast(halting_probabilities, accumulator_value)
+        halted_batches = self._setup_left_broadcast(halted_batches, accumulator_value)
 
         # We weight then add. The result is then created into an update, but
         # only accumulators which have not already reached a halting state get updated.
 
         new_accumulators = accumulator_value + halting_probabilities * update_value
         return jnp.where(halted_batches, accumulator_value, new_accumulators)
-    def _check_if_locked(self):
-        if self.locked:
-            msg = f"""
-            An attempt was made to run ACT with a locked controller. 
-    
-            Calling any function other than cache_updates, reset_batches, or iterate_act will
-            immediately result in the returned controller being set into the locked
-            state. This prevents you from trying to continue with ACT on a controller
-            set in an information display mode.
-    
-            If you need to fetch information, and you need to continue act, then
-            just make a new controller with a different name, and keep the original controller
-            around
-            """
-            msg = textwrap.dedent(msg)
-            raise RuntimeError(msg)
+
+
     # Main loop logic
     def cache_update(self,
                           name: str,
@@ -330,31 +366,25 @@ class ACT_Controller(Immutable):
         updates = self.state.updates.copy()
         for name in accumulators.keys():
             try:
-                # Merging PyTrees turns out to be more difficult than
-                # expected.
-                #
-                # Jax, strangly, has no multitree map, which means walking through the
-                # nodes in parallel across multiple trees is not possible. Instead, we flatten
-                # both trees deterministically, walk through the leaves, and then restore the
-                # original structure.
-
                 accumulator_tree = accumulators[name]
                 update_tree = updates[name]
-                treedef = jax.tree_util.tree_structure(accumulator_tree)
 
-                accumulator_leaves = jax.tree_util.tree_flatten(accumulator_tree)
-                update_leaves = jax.tree_util.tree_flatten(update_tree)
+                # To update the accumulators, which may be pytrees, we
+                # create an update function to apply update logic on
+                # accumulator, update leaf pairs. Then we use
+                # merge pytrees to zip the trees together.
 
-                assert len(accumulator_leaves) == len(update_leaves) # Just a quick sanity check.
+                update_function = lambda accumulator_leaf, update_leaf : self._update_accumulator(
+                                                                            accumulator_leaf,
+                                                                            update_leaf,
+                                                                            halting_probabilities
+                                                                            )
+                new_accumulator = self._merge_pytrees(update_function,
+                                                      accumulator_tree,
+                                                      update_tree
+                                                    )
 
-                new_leaves = []
-                for accumulator_leaf, update_leaf in zip(accumulator_leaves, update_leaves):
-                    new_accumulator = self._update_accumulator(accumulator_leaf,
-                                                               update_leaf,
-                                                               halting_probabilities)
-                    new_leaves.append(new_accumulator)
-
-                accumulators[name] = jax.tree_unflatten(treedef, new_leaves)
+                accumulators[name] = new_accumulator
                 updates[name] = None # Resets update slot, so we do not think an update was already done.
             except Exception as err:
                 msg = f"An error occurred regarding accumulator {name}: \n\n"
@@ -417,6 +447,8 @@ class ACT_Controller(Immutable):
         iterations = self.iterations*mask
         residuals = self.residuals*mask
         probabilities = self.probabilities*mask
+
+        #TODO: Fix
 
         update_func = lambda tree : self._apply_mask(mask, tree)
         accumulators = {name : jax.tree_util.tree_map(update_func, value)
@@ -484,27 +516,19 @@ class ACT_Controller(Immutable):
 
         accumulators = {}
         for name in self.accumulators.keys():
-            # It is frusterating to map behavior over PyTrees due to
-            # a lack of a multitree map in jax. Instead, we flatten
-            # both trees, perform updates on the leaves, and
-            # then reconstruct the leaves. The actual update consists
-            # of replacing the accumulator with the defaults on the
-            # tensors marked as true.
-
             accumulator = self.accumulators[name]
             default = self.state.defaults[name]
-            treedef = jax.tree_util.tree_structure(accumulator)
 
-            accumulator_leaves = jax.tree_util.tree_flatten(accumulator)
-            default_leaves = jax.tree_util.tree_flatten(default)
-
-            new_leaves = []
-            for accumulator_leaf, default_leaf in zip(accumulator_leaves, default_leaves):
-                new_tensor = jnp.where(unhalted_batch_selector, accumulator_leaf, default_leaf)
-                new_leaves.append(new_tensor)
-
-            accumulator = jax.tree_unflatten(treedef, new_leaves)
-            accumulators[name] = accumulator
+            # To merge the pytrees, we use a helper function that applies
+            # a update function to pairs of like leaves.
+            update_func = lambda accumulator, default : jnp.where(unhalted_batch_selector,
+                                                                  accumulator,
+                                                                  default
+                                                                  )
+            new_accumulator = self._merge_pytrees(update_func,
+                                                  accumulator,
+                                                  default)
+            accumulators[name] = new_accumulator
 
         # Create the new state, return the new
         # controller
@@ -533,6 +557,6 @@ def flatten_controller(controller: ACT_Controller)->Tuple[ACTStates, Any]:
     return state, None
 
 def unflatten_controller(aux: Any, state: ACTStates)->ACT_Controller:
-    return ACT_Controller(state)
+    return ACT_Controller.load(state)
 
 jax.tree_util.register_pytree_node(ACT_Controller, flatten_controller, unflatten_controller)
