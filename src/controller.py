@@ -109,7 +109,7 @@ class ACT_Controller(Immutable):
     # Direct properties
 
     @property
-    def locked(self)->bool:
+    def is_locked(self)->bool:
         return self.state.is_locked
     @property
     def probabilities(self)->jnp.ndarray:

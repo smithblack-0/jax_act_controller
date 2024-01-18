@@ -21,6 +21,7 @@ class ACTStates:
 
     """
     def replace(self,
+                epsilon: Optional[float] = None,
                 is_locked: Optional[bool] = None,
                 iterations: Optional[jnp.ndarray] = None,
                 residuals: Optional[jnp.ndarray] = None,
@@ -33,6 +34,8 @@ class ACTStates:
         the exact same.
         :return: A new ACT states
         """
+        if epsilon is None:
+            epsilon = self.epsilon
         if is_locked is None:
             is_locked = self.is_locked
         if iterations is None:
@@ -47,7 +50,7 @@ class ACTStates:
             updates = self.updates
 
         return ACTStates(is_locked,
-                         self.epsilon,
+                         epsilon,
                          iterations,
                          residuals,
                          probabilities,
