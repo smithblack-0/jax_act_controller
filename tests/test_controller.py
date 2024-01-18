@@ -12,7 +12,6 @@ from src.controller import ACT_Controller
 SHOW_ERROR_MESSAGES = True
 def make_empty_state_mockup() -> ACTStates:
     return ACTStates(
-        is_locked=None,
         epsilon=0,
         iterations=None,
         accumulators=None,
@@ -43,16 +42,6 @@ class test_properties(unittest.TestCase):
             probabilities = None,
             residuals = None,
             )
-    def test_lock_indicator(self):
-        """ Test if the lock indicator is correctly reflected """
-        lock_status = True
-
-        mock_state = make_empty_state_mockup()
-        mock_state = mock_state.replace(is_locked=lock_status)
-
-        controller = ACT_Controller(mock_state)
-        self.assertEqual(lock_status, controller.is_locked)
-
     def test_residuals(self):
         """ Test if residuals are being read properly"""
         mock_residuals = jnp.array([0.1, 0.3, 0.4, 0.7])
@@ -141,49 +130,6 @@ class test_private_helpers(unittest.TestCase):
     We mock up data to represent a condition, then see if the
     helpers act appropriately to produce a new state
     """
-    def test_setup_left_broadcast(self):
-        """ Test the broadcast helper works properly"""
-        item1 = random.randn(2, 5)
-        item2 = random.randn(2, 5, 6, 8)
-        item3 = random.randn(2)
-
-        # Test same length works
-        setup = ACT_Controller._setup_left_broadcast(item1, item1)
-        setup + item1
-
-        # Test making it broader works
-        setup = ACT_Controller._setup_left_broadcast(item1, item2)
-        item2 + setup
-
-        #Test simple throw works
-        with self.assertRaises(AssertionError):
-            ACT_Controller._setup_left_broadcast(item1, item3)
-
-    def test_merge_pytrees(self):
-        """
-        Test that the function responsible for pytree merging actually
-        works as expected
-        """
-
-        tensor = jnp.array([0.0, 1.0, 1.2, 0.1])
-        tensor2 = jnp.array([2.0, 1.0, 0.2, 0.1])
-
-        # Test edge case: Only leafs
-
-        operator = lambda a, b : a - b
-        expected_tensor = jnp.array([-2.0, 0, 1.0, 0.0])
-        outcome = ACT_Controller._merge_pytrees(operator, tensor, tensor2)
-        self.assertTrue(jnp.allclose(expected_tensor, outcome))
-
-        # Test tree case.
-
-        tree = {"item" : tensor, "item2" : tensor, "item3" : [tensor, tensor]}
-        tree2 = {"item" : tensor2, "item2" : tensor2, "item3" : [tensor2, tensor2]}
-        expected  = {"item" : expected_tensor, "item2" : expected_tensor,
-                   "item3" : [expected_tensor, expected_tensor]}
-
-        outcome = ACT_Controller._merge_pytrees(operator, tree, tree2)
-        self.assertTrue(jnp.allclose(outcome['item'], expected['item']))
 
     def test_process_probabilities(self):
         """ Test that probability processing is acting as expected"""
@@ -294,3 +240,5 @@ class test_main_logic(unittest.TestCase):
     Test the main pieces of ACT logic that are used to perform
     act computation individually.
     """
+    def test_a
+

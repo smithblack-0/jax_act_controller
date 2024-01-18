@@ -4,7 +4,8 @@ from src.states import ACTStates, ViewerConfig
 
 class ACT_Viewer(Immutable):
 
-    def apply
+    def _apply_mask(self, ):
+
 
     @properties
     def probabilities(self):
