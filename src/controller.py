@@ -123,7 +123,7 @@ class ACT_Controller(Immutable):
 
     @property
     def iterations(self)->jnp.ndarray:
-        return self.state.iteration
+        return self.state.iterations
 
     @property
     def accumulators(self)->PyTree:
@@ -196,14 +196,18 @@ class ACT_Controller(Immutable):
         # are newly halted. However, the unfiltered residuals
         # are still useful for probability clamping
 
-        raw_residuals = 1 - halting_probabilities
+        raw_residuals = 1 - self.probabilities
         residuals = jnp.where(newly_halting, raw_residuals, self.residuals)
 
         # Halting probabilities are clamped to the raw residual entries
         # where they will be halted. This ensures total probability can
         # never exceed one.
 
+        print(will_be_halted)
+        print(halting_probabilities)
+        print(raw_residuals)
         halting_probabilities = jnp.where(will_be_halted, halting_probabilities, raw_residuals)
+        print(halting_probabilities)
 
         # Finally, cumulative probabilities are updated to contain the sum
         # of the halting probabilities and the current cumulative probabilities
@@ -508,13 +512,27 @@ class ACT_Controller(Immutable):
         state = self.state.replace(
             residuals=residuals,
             probabilities=probabilities,
-            iterators=iterators,
+            iterations=iterators,
             accumulators=accumulators
         )
 
         return ACT_Controller(state)
-
+    # Saving, loading, and pytrees
+    def save(self)->ACTStates:
+        return self.state
+    @classmethod
+    def load(cls, state: ACTStates)->'ACT_Controller':
+        return cls(state)
     def __init__(self, state: ACTStates):
         super().__init__()
         self.state = state
-        self.lock()
+        self.make_immutable()
+
+def flatten_controller(controller: ACT_Controller)->Tuple[ACTStates, Any]:
+    state = controller.save()
+    return state, None
+
+def unflatten_controller(aux: Any, state: ACTStates)->ACT_Controller:
+    return ACT_Controller(state)
+
+jax.tree_util.register_pytree_node(ACT_Controller, flatten_controller, unflatten_controller)
