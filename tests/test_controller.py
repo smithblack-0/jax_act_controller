@@ -6,6 +6,7 @@ import unittest
 import jax
 from numpy import random
 from jax import numpy as jnp
+from src import utils
 from src.states import ACTStates
 from src.controller import ACT_Controller
 
@@ -20,6 +21,7 @@ def make_empty_state_mockup() -> ACTStates:
         probabilities=None,
         residuals=None,
     )
+
 class test_properties(unittest.TestCase):
     """
     This is a relatively boring and uninformative series of tests
@@ -239,5 +241,108 @@ class test_main_logic(unittest.TestCase):
     Test the main pieces of ACT logic that are used to perform
     act computation individually.
     """
-    def test_act
+    def test_cache_update(self):
+        """ Test that updates are properly cached, and error handling goes off"""
 
+        # Test that an error is thrown, as is proper, when
+        # attempting to cache an update that was never configured
+
+        mock_state = make_empty_state_mockup()
+        mock_state = mock_state.replace(updates={})
+
+        with self.assertRaises(ValueError) as err:
+            update = jnp.array([0.0, 0.0, 0.0])
+
+            controller = ACT_Controller(mock_state)
+            controller.cache_update("Test", update)
+
+        if SHOW_ERROR_MESSAGES:
+            print("cache update test: No configured channel")
+            print(err.exception)
+
+        # Test that we correctly throw an error if the update was already set this
+        # act iteration
+
+        mock_state = make_empty_state_mockup()
+        mock_state = mock_state.replace(updates={"test" : jnp.ndarray([1.0, 2.0, 3.0])})
+
+        with self.assertRaises(RuntimeError) as err:
+            update = jnp.array([0.0, 0.0, 0.1])
+
+            controller = ACT_Controller(mock_state)
+            controller.cache_update("test", update)
+
+        if SHOW_ERROR_MESSAGES:
+            print("cache update test: Already assigned this iteration.")
+
+        # Test that when these conditions do not occur, we correctly assign
+        # the update to the given update channel
+        update = jnp.array([0.0, 0.0, 0.1])
+
+        mock_state = make_empty_state_mockup()
+        mock_state = mock_state.replace(updates={"test" : None, "test2" : jnp.ndarray([1.0, 2.0, 3.0])})
+
+        controller = ACT_Controller(mock_state)
+        controller = controller.cache_update("test", update)
+        self.assertTrue(jnp.all(controller.state.updates["test"] == update))
+
+    def test_act_iterate(self):
+        """ Test that the primary act iteration mechanism operates properly"""
+
+        # We start by setting up all the various features for the state. We are
+        # configuring a hypothetical ACT situation with a "state" and "output"
+        # accumulators, which has two batch dimensions, and for which all updates
+        # have already been setup.
+        #
+        # Additionally, the first batch will not enter the halted condition, the
+        # second one is just now halting, and the third one is already halted.
+
+
+        epsilon = 0.1
+        iterations = jnp.array([3, 3, 2])
+        probabilities = jnp.array([0.1, 0.4, 1.0])
+        residuals = jnp.array([0.0,  0.0, 0.3])
+        accumulator = {"state": jnp.array([[3.0, 4.0, -1.0], [0.5, 1.2, 2.1],[0.7, 0.3, 0.5]]),
+                       "output" : jnp.array([[0.1, 0.1, 0.1], [1.0, 0.7, 0.3], [0.1, 0.1, 0.1]])
+                       }
+        update = {"state" : jnp.array([[1.0, 1.0, 1.0],[2.0, 2.0, 2.0], [-1.0, 2.0, 1.0]]),
+                  "output" : jnp.array([[0.1, 0.2, 0.2],[1.2, 1.2, 1.2], [0.1. 0.1, 0.1]])}
+
+
+        mock_state = make_empty_state_mockup()
+        mock_state = mock_state.replace(epsilon = epsilon,
+                                        iterations = iterations,
+                                        residuals=residuals,
+                                        probabilities=probabilities,
+                                        accumulators=accumulator,
+                                        updates=update)
+
+        # The first halting probability should not be clamped. The second should be clamped to
+        # 0.5, and the third should be clamped to zero.
+
+        halting_probabilities = jnp.array([0.5, 0.7, 0.6])
+
+        # The halting probability is designed to commit half of the update, where possible. That affects the
+        # expected accumulator. We also expect to update probabilities
+
+
+        expected_iterations = jnp.array([4, 4, 2])
+
+        expected_accumulator = {"state" : jnp.array([[3.5, 4.5, -0.5],[1.5, 2.2, 3.1], [0.7, 0.3, 0.5]]),
+                                "output" : jnp.array([[0.15, 0.2, 0.2], [1.6, 1.3, 0.9], [0.1, 0.1, 0.1]])
+                                }
+        expected_updates = {"state" : None, "output" : None}
+
+        expected_residuals = jnp.array([0.0, 0.5, 0.3])
+        expected_probabilities = jnp.array([0.6, 1.0, 1.0])
+
+        # We actually need to run the tests
+
+        controller = ACT_Controller(mock_state)
+        new_controller = controller.iterate_act(halting_probabilities)
+
+        self.assertTrue(jnp.all(new_controller.iterations == expected_iterations))
+        self.assertTrue(jnp.allclose(new_controller.probabilities, expected_probabilities))
+        self.assertTrue(jnp.allclose(new_controller.residuals, expected_residuals))
+        self.assertTrue(utils.are_pytrees_equal(new_controller.accumulators, expected_accumulator))
+        self.assertTrue(utils.are_pytrees_equal(new_controller.state.updates, expected_updates))
