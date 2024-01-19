@@ -137,8 +137,14 @@ class ControllerBuilder(Immutable):
         state = self.state.replace(iterations=values)
         return ControllerBuilder(state)
 
-    def set_
+    def set_epsilon(self, epsilon: float)->ControllerBuilder:
 
+
+    # Factories and other assistance.
+
+
+
+    # Creation and editing
     @classmethod
     def new_builder(cls,
                     batch_shape: Union[int, List[int]],
@@ -204,9 +210,6 @@ class ControllerBuilder(Immutable):
         self.state = state
         self.make_immutable()
 
-
-
-def get_builder()
 class StateBuilder:
     """
     A builder to create an act state usable downstream. It works
