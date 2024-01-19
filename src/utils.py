@@ -1,11 +1,12 @@
 import jax
+import numpy as np
 from jax import numpy as jnp
-from typing import Callable
+from typing import Callable, Any
 from src.types import PyTree
 
-def merge_pytrees(function: Callable[[jnp.ndarray,
-                                       jnp.ndarray],
-                                      jnp.ndarray],
+def merge_pytrees(function: Callable[[Any,
+                                      Any],
+                                      Any],
                    primary_tree: PyTree,
                    auxilary_tree: PyTree,
                    ) -> PyTree:
@@ -41,6 +42,29 @@ def merge_pytrees(function: Callable[[jnp.ndarray,
         new_leaves.append(update)
 
     return jax.tree_util.tree_unflatten(treedef, new_leaves)
+
+def are_pytrees_equal(tree_one: PyTree, tree_two: PyTree, use_allclose: bool = True)->bool:
+    """
+    Checks if two pytrees are almost equal to one another.
+    :param tree_one:
+    :param tree_two:
+    :return:
+    """
+
+    def are_leaves_equal(leaf_one: Any, leaf_two: Any)->bool:
+        if type(leaf_one) != type(leaf_two):
+            return False
+        elif isinstance(leaf_one, (jnp.ndarray, np.ndarray)):
+            if use_allclose:
+                return jnp.allclose(leaf_one, leaf_two)
+            else:
+                return jnp.all(leaf_one == leaf_two)
+        else:
+            return leaf_one == leaf_two
+
+    result_tree = merge_pytrees(are_leaves_equal, tree_one, tree_two)
+    leaves = jax.tree_flatten(result_tree)[0]
+    return all(leaves)
 
 
 def setup_left_broadcast(tensor: jnp.ndarray,
