@@ -35,7 +35,6 @@ class test_properties(unittest.TestCase):
     def make_empty_state_mockup(self)->ACTStates:
 
         return ACTStates(
-            is_locked = None,
             epsilon = 0,
             iterations=None,
             accumulators=None,
@@ -346,3 +345,58 @@ class test_main_logic(unittest.TestCase):
         self.assertTrue(jnp.allclose(new_controller.residuals, expected_residuals))
         self.assertTrue(utils.are_pytrees_equal(new_controller.accumulators, expected_accumulator))
         self.assertTrue(utils.are_pytrees_equal(new_controller.state.updates, expected_updates))
+
+    def test_reset_batches(self):
+        """ Test that the reset batches method will isolate and reset to defaults appropriately."""
+
+         # We start by setting up all the various features for the state. We are
+        # configuring a hypothetical ACT situation with a "state" and "output"
+        # accumulators, which has two batch dimensions, and for which all updates
+        # have already been setup.
+        #
+        # Additionally, the first and second batch are not halted, but the third batch is
+        #
+        # We also have to define the defaults
+
+
+        epsilon = 0.1
+        iterations = jnp.array([3, 3, 2])
+        probabilities = jnp.array([0.1, 0.4, 1.0])
+        residuals = jnp.array([0.0,  0.0, 0.3])
+        accumulator = {"state": jnp.array([[3.0, 4.0, -1.0], [0.5, 1.2, 2.1],[0.7, 0.3, 0.5]]),
+                       "output" : jnp.array([[0.1, 0.1, 0.1], [1.0, 0.7, 0.3], [0.1, 0.1, 0.1]])
+                       }
+        defaults = {"state" : jnp.array([[0.0, 0.0, 0.0],[0.0,0.0,0.0], [0.0, 0.0, 0.0]]),
+                    "output" : jnp.array([[1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0]])}
+        update = {"state" : None,
+                  "output" : None}
+
+        mock_state = make_empty_state_mockup()
+        mock_state = mock_state.replace(epsilon = epsilon,
+                                        iterations = iterations,
+                                        residuals=residuals,
+                                        probabilities=probabilities,
+                                        accumulators=accumulator,
+                                        defaults = defaults,
+                                        updates=update)
+
+        # Create expectations:
+        #
+        # Everything generally stays the same unless in the halted state.
+
+        expected_iterations = jnp.array([3, 3, 0])
+        expected_probabilities = jnp.array([0.1, 0.4, 0.0])
+        expected_residuals = jnp.array([0.0, 0.0, 0.0])
+        expected_accumulators = {"state": jnp.array([[3.0, 4.0, -1.0], [0.5, 1.2, 2.1],[0.0, 0.0, 0.0]]),
+                       "output" : jnp.array([[0.1, 0.1, 0.1], [1.0, 0.7, 0.3], [1.0, 1.0, 1.0]])
+                       }
+
+        # Run test
+
+        controller = ACT_Controller(mock_state)
+        new_controller = controller.reset_batches()
+
+        self.assertTrue(jnp.all(expected_iterations == new_controller.iterations))
+        self.assertTrue(jnp.all(expected_probabilities == new_controller.probabilities))
+        self.assertTrue(jnp.all(expected_residuals == new_controller.residuals))
+        self.assertTrue(utils.are_pytrees_equal(expected_accumulators,new_controller.accumulators))

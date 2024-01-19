@@ -317,6 +317,10 @@ class ACT_Controller(Immutable):
                  reset to default
         """
 
+        for key, value in self.state.updates.items():
+            if value is not None:
+                raise RuntimeError("Attempt to reset batches while updates are pending. Finish current iteration.")
+
         unhalted_batch_selector = ~self.halted_batches
 
         # Multiplying by zero resets the probabilities and iteration statistics.

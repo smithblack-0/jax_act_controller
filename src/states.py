@@ -26,6 +26,7 @@ class ACTStates:
                 residuals: Optional[jnp.ndarray] = None,
                 probabilities: Optional[jnp.ndarray] = None,
                 accumulators: Optional[Dict[str, PyTree]] = None,
+                defaults: Optional[Dict[str, PyTree]] = None,
                 updates: Optional[Dict[str, Optional[PyTree]]] = None,
                 )->'ACTStates':
         """
@@ -46,12 +47,14 @@ class ACTStates:
             accumulators = self.accumulators
         if updates is None:
             updates = self.updates
+        if defaults is None:
+            defailts = self.defaults
 
         return ACTStates(epsilon,
                          iterations,
                          residuals,
                          probabilities,
-                         self.defaults,
+                         defaults,
                          accumulators,
                          updates)
     epsilon: float
