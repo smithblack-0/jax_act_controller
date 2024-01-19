@@ -4,6 +4,7 @@ Unit tests to test the controller is functioning adequetely
 
 import unittest
 import jax
+import traceback
 from numpy import random
 from jax import numpy as jnp
 from src import utils
@@ -284,7 +285,101 @@ class test_main_logic(unittest.TestCase):
         controller = ACT_Controller(mock_state)
         controller = controller.cache_update("test", update)
         self.assertTrue(jnp.all(controller.state.updates["test"] == update))
+    def test_act_iterate_error_handling(self):
+        """ Test that the primary iteration method handles errors sanely"""
 
+        # We start by setting up a sane state. We will corrupt it in various ways
+
+
+        epsilon = 0.1
+        iterations = jnp.array([3, 3, 2])
+        probabilities = jnp.array([0.1, 0.5, 1.0])
+        residuals = jnp.array([0.0,  0.0, 0.3])
+        accumulator = {"state": jnp.array([[3.0, 4.0, -1.0], [0.5, 1.2, 2.1],[0.7, 0.3, 0.5]]),
+                       "output" : jnp.array([[0.1, 0.1, 0.1], [1.0, 0.7, 0.3], [0.1, 0.1, 0.1]])
+                       }
+        update = {"state" : jnp.array([[1.0, 1.0, 1.0],[2.0, 2.0, 2.0], [-1.0, 2.0, 1.0]]),
+                  "output" : jnp.array([[0.1, 0.2, 0.2],[1.2, 1.2, 1.2], [0.1, 0.1, 0.1]])}
+
+        sane_state = make_empty_state_mockup()
+        sane_state = sane_state.replace(epsilon = epsilon,
+                                        iterations = iterations,
+                                        residuals=residuals,
+                                        probabilities=probabilities,
+                                        accumulators=accumulator,
+                                        updates=update)
+
+        # Test that we detect halting probabilities are the wrong shape
+
+        controller = ACT_Controller(sane_state)
+        with self.assertRaises(ValueError) as err:
+            halting_probabilities = random.randn(2, 3, 5)
+            controller.iterate_act(halting_probabilities)
+
+        if SHOW_ERROR_MESSAGES:
+            print("iterate_act error message: When halting probabilities have wrong shape")
+            print(err.exception)
+        # Test we detect when halting probabilities are out of range - low
+        controller = ACT_Controller(sane_state)
+        with self.assertRaises(ValueError) as err:
+            halting_probabilities = jnp.array([-0.1, 0.3, 0.0])
+            controller.iterate_act(halting_probabilities)
+
+        if SHOW_ERROR_MESSAGES:
+            print("iterate_act error message: When halting probabilities are below zero")
+            print(err.exception)
+
+        # Test we detect when halting probabilities are out of range - too high
+        controller = ACT_Controller(sane_state)
+        with self.assertRaises(ValueError) as err:
+            halting_probabilities = jnp.array([0.2, 2.4, 0.2])
+            controller.iterate_act(halting_probabilities)
+
+        if SHOW_ERROR_MESSAGES:
+            print("iterate_act error message: When halting probabilies are above 1.0")
+            print(err.exception)
+
+        # Test we do NOT throw when halting probabilities are at 0.0 or 1.0
+
+        controller = ACT_Controller(sane_state)
+        halting_probabilities = jnp.array([0.0, 1.0, 0.5])
+        controller.iterate_act(halting_probabilities)
+
+        # Test we detect when an update was not cached
+
+        missing_updates = sane_state.updates.copy()
+        missing_updates["output"] = None
+        no_updates_state = sane_state.replace(updates=missing_updates)
+
+        controller = ACT_Controller(no_updates_state)
+
+        with self.assertRaises(RuntimeError) as err:
+            halting_probabilities = jnp.array([0.2, 0.3, 0.5])
+            controller.iterate_act(halting_probabilities)
+
+
+        if SHOW_ERROR_MESSAGES:
+            print("iterate_act error message: Updates not fully prepped")
+            print("Note: First message is top level, second is what traceback points to")
+            print(err.exception)
+            print(err.exception.__cause__)
+
+        # Test we detect when a cached update is the wrong shape
+
+        bad_updates = update.copy()
+        bad_updates["output"] = random.randn(5, 10, 30)
+        no_updates_state = sane_state.replace(updates=missing_updates)
+
+        controller = ACT_Controller(no_updates_state)
+        with self.assertRaises(RuntimeError) as err:
+            halting_probabilities = jnp.array([0.2,0.3, 0.2])
+            controller.iterate_act(halting_probabilities)
+
+        if SHOW_ERROR_MESSAGES:
+            print("iterate_act error message: Update has wrong shape")
+            print("Note: First message is top level, second is what traceback points to")
+            print(err.exception)
+            print(err.exception.__cause__)
     def test_act_iterate(self):
         """ Test that the primary act iteration mechanism operates properly"""
 
@@ -299,13 +394,13 @@ class test_main_logic(unittest.TestCase):
 
         epsilon = 0.1
         iterations = jnp.array([3, 3, 2])
-        probabilities = jnp.array([0.1, 0.4, 1.0])
+        probabilities = jnp.array([0.1, 0.5, 1.0])
         residuals = jnp.array([0.0,  0.0, 0.3])
         accumulator = {"state": jnp.array([[3.0, 4.0, -1.0], [0.5, 1.2, 2.1],[0.7, 0.3, 0.5]]),
                        "output" : jnp.array([[0.1, 0.1, 0.1], [1.0, 0.7, 0.3], [0.1, 0.1, 0.1]])
                        }
         update = {"state" : jnp.array([[1.0, 1.0, 1.0],[2.0, 2.0, 2.0], [-1.0, 2.0, 1.0]]),
-                  "output" : jnp.array([[0.1, 0.2, 0.2],[1.2, 1.2, 1.2], [0.1. 0.1, 0.1]])}
+                  "output" : jnp.array([[0.1, 0.2, 0.2],[1.2, 1.2, 1.2], [0.1, 0.1, 0.1]])}
 
 
         mock_state = make_empty_state_mockup()

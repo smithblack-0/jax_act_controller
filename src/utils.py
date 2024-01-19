@@ -63,7 +63,7 @@ def are_pytrees_equal(tree_one: PyTree, tree_two: PyTree, use_allclose: bool = T
             return leaf_one == leaf_two
 
     result_tree = merge_pytrees(are_leaves_equal, tree_one, tree_two)
-    leaves = jax.tree_flatten(result_tree)[0]
+    leaves = jax.tree_util.tree_flatten(result_tree)[0]
     return all(leaves)
 
 

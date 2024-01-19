@@ -70,7 +70,7 @@ class ACT_Controller(Immutable):
                  It also updates numerous other features which are updated, such as iteration and
                  residuals.
     reset_batches: A function that places halted act channels back into their default
-                   condition. It will return a new controller instance.
+                   condition. It returns a new controller.
 
     make_viewer: A function which returns a "viewer" object. That object is designed to assist with gathering
                  and accumulating
@@ -80,9 +80,7 @@ class ACT_Controller(Immutable):
     To use the controller, you will first need to setup the accumulation
     channels, likely using a factory method or the provided builder.
 
-    You will then perform an act process involving generating the accumulation
-    updates, and store them away for each iteration.
-
+    Then
     """
 
 
@@ -249,14 +247,17 @@ class ACT_Controller(Immutable):
         :return: The act controller with the iteration performed.
         """
         if halting_probabilities.shape != self.probabilities.shape:
-            raise ValueError("provided and original shapes of halting probabilities do not match")
+            raise ValueError("Batch shape and shapes of halting probabilities do not match")
+
+        if jnp.any((halting_probabilities > 1) | (halting_probabilities < 0)):
+            raise ValueError("Halting probabities were not between 0 and 1 inclusive")
 
         # Compute and manage probability quantities.
         #
         # This includes clamping the halting probabilities, and
         # making the new probabilities and residuals.
 
-        halting_probabilities, probabilities, residuals = self._process_probabilities(halting_probabilities)
+        halting_probabilities, residuals, probabilities = self._process_probabilities(halting_probabilities)
 
         # Perform updates on each accumulator. Fetch the
         # update, run the update method, store it.
@@ -268,16 +269,34 @@ class ACT_Controller(Immutable):
                 accumulator_tree = accumulators[name]
                 update_tree = updates[name]
 
+                # We briefly sanity check the updates cache to verify
+                # it is actually configured for update
+
+                if update_tree is None:
+                    msg = f"""
+                    Update tree of name '{name}' was never set. Make
+                    sure to call cache_update against all configured
+                    accumulators before committing.
+                    """
+                    msg = textwrap.dedent(msg)
+                    raise RuntimeError(msg)
+
                 # To update the accumulators, which may be pytrees, we
                 # create an update function to apply update logic on
                 # accumulator, update leaf pairs. Then we use
                 # merge pytrees to zip the trees together.
 
-                update_function = lambda accumulator_leaf, update_leaf : self._update_accumulator(
-                                                                            accumulator_leaf,
-                                                                            update_leaf,
-                                                                            halting_probabilities
-                                                                            )
+                def update_function(accumulator_leaf: jnp.ndarray,
+                                    update_leaf: jnp.ndarray
+                                    )->jnp.ndarray:
+                    """
+                    Accepts a accumulator leaf, and an update
+                    leaf. Merges them together using the probabilities.
+                    """
+                    return self._update_accumulator(accumulator_leaf,
+                                                    update_leaf,
+                                                    halting_probabilities
+                                                    )
                 new_accumulator = utils.merge_pytrees(update_function,
                                                       accumulator_tree,
                                                       update_tree
@@ -286,8 +305,8 @@ class ACT_Controller(Immutable):
                 accumulators[name] = new_accumulator
                 updates[name] = None # Resets update slot, so we do not think an update was already done.
             except Exception as err:
-                msg = f"An error occurred regarding accumulator {name}: \n\n"
-                raise RuntimeError(msg) from err
+                msg = f"An error occurred regarding accumulator named '{name}': \n\n"
+                raise RuntimeError(msg).with_traceback(err.__traceback__) from err
 
         # We update the iteration count only where we have
         # not reached the halting state
@@ -336,10 +355,25 @@ class ACT_Controller(Immutable):
 
             # To merge the pytrees, we use a helper function that applies
             # a update function to pairs of like leaves.
-            update_func = lambda accumulator, default : jnp.where(unhalted_batch_selector,
-                                                                  accumulator,
-                                                                  default
-                                                                  )
+
+            def update_func(accumulator_leaf: jnp.ndarray,
+                            default_leaf: jnp.ndarray
+                            )->jnp.ndarray:
+                """
+                Accepts a accumulator leaf tensor, and a defalts
+                leaf tensor. Uses the batch selector to replace elements
+                of the accumulators with the defaults where appropriate.
+                """
+
+                # Unsqueeze selector to match
+                #
+                # Then reset to defaults where appropriate and return.
+                broadcastable_selector = utils.setup_left_broadcast(unhalted_batch_selector,
+                                                                    accumulator)
+                return jnp.where(broadcastable_selector,
+                                 accumulator_leaf,
+                                 default_leaf)
+
             new_accumulator = utils.merge_pytrees(update_func,
                                                   accumulator,
                                                   default)
