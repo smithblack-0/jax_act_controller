@@ -4,12 +4,15 @@ needed to create an ACT instance. It also includes
 some degree of error checking.
 """
 
-from typing import Optional, List, Union, Dict
+from typing import Optional, List, Union, Dict, Any
 
 import jax.tree_util
 import textwrap
+import numpy as np
+import warnings
 from jax import numpy as jnp
 
+from src import utils
 from src.states import ACTStates
 from src.types import PyTree
 from src.immutable import Immutable
@@ -28,7 +31,8 @@ class ControllerBuilder(Immutable):
     you keep the new one around.
     """
 
-    #Item getters
+    # Manual build properties and
+    # methods.
 
     @property
     def epsilon(self)->float:
@@ -47,13 +51,44 @@ class ControllerBuilder(Immutable):
 
     @property
     def defaults(self)->Dict[str, PyTree]:
-        return self.state.accumulators
+        return self.state.defaults
 
     @property
     def accumulators(self)->Dict[str, PyTree]:
         return self.state.accumulators
 
     # Important setters
+
+    @staticmethod
+    def _validate_set_shape(original: jnp.ndarray,
+                            new: jnp.ndarray,
+                            field_name: str):
+
+        if original.shape != new.shape:
+            msg = f"""
+            Attempt to set feature named '{field_name}' with original shape {original.shape}.
+            
+            The proposed new values have shape {new.shape}. These did not match.
+            """
+            msg = textwrap.dedent(msg)
+            raise ValueError(msg)
+
+    @staticmethod
+    def _validate_set_dtype(original: jnp.ndarray,
+                            new: jnp.ndarray,
+                            field_name: str):
+        if original.dtype != new.dtype:
+            msg = f"""
+            Attempt to set feature with wrong dtype. 
+            
+            Field of name {field_name} originally had dtype {original.dtype}.
+            
+            However, the proposed update has dtype {new.dtype}
+            """
+            msg = textwrap.dedent(msg)
+            raise TypeError(msg)
+
+
     def set_probabilities(self, values: jnp.ndarray)->'ControllerBuilder':
         """
         Sets the values of probabilities to something new
@@ -62,22 +97,10 @@ class ControllerBuilder(Immutable):
         :raises: ValueError, if original and new probability shapes do not match
         :raises: TypeError, if new and original probability types do not match.
         """
-        if self.probabilities.shape != values.shape:
-            msg = f"""
-            Attempt to set new probabilities of shape '{values.shape}'
-            However, existing batch shape is '{self.probabilities.shape}'.
-            
-            These do not match
-            """
-            msg = textwrap.dedent(msg)
-            raise ValueError(msg)
-        if self.probabilities.dtype != values.dtype:
-            msg = f"""
-            Attempt to set new probabilities with dtype of {values.dtype},
-            which is different from {self.probabilities.dtype}
-            """
-            msg = textwrap.dedent(msg)
-            raise TypeError(msg)
+
+        self._validate_set_shape(self.probabilities, values, field_name="probabilities")
+        self._validate_set_dtype(self.probabilities, values, field_name="probabilities")
+
         state = self.state.replace(residuals=values)
         return ControllerBuilder(state)
 
@@ -91,22 +114,9 @@ class ControllerBuilder(Immutable):
         :raises: ValueError, if the new and original residual shape are not the same
         :raises: TypeError, if the new and original residual do not have the same dtye.
         """
-        if self.residuals.shape != values.shape:
-            msg = f"""
-            Attempt to set new residuals of shape {values.shape}. 
-            
-            However, existing batch shape is {self.residuals.shape}
-            """
-            msg = textwrap.dedent(msg)
-            raise ValueError(msg)
-        if self.residuals.dtype != values.dtype:
-            msg = f"""
-            Attempt to set new residuals of dtype {values.dtype}. 
-            
-            However, existing dtype was {self.residuals.dtype}
-            """
-            msg = textwrap.dedent(msg)
-            raise ValueError(msg)
+        self._validate_set_shape(self.residuals, values, field_name="residuals")
+        self._validate_set_dtype(self.residuals, values, field_name="residuals")
+
         state = self.state.replace(residuals=values)
         return ControllerBuilder(state)
 
@@ -118,33 +128,248 @@ class ControllerBuilder(Immutable):
         :raises: If the new and original shape differ
         :raises: If the dtype is not int32
         """
-        if self.residuals.shape != values.shape:
-            msg = f"""
-            Attempt to set new iterations tensor of shape {values.shape}. 
 
-            However, existing batch shape is {self.iterations.shape}
-            """
-            msg = textwrap.dedent(msg)
-            raise ValueError(msg)
-        if values.dtype != jnp.int32:
-            msg = f"""
-            Attempt to set new interations tensor of wrong dtype. 
-            
-            Got tensor of dtype {values.dtype}, but needed int32.
-            """
-            msg = textwrap.dedent(msg)
-            raise ValueError(msg)
+        self._validate_set_shape(self.iterations, values, field_name="iterations")
+        self._validate_set_dtype(self.iterations, values, field_name="iterations")
+
         state = self.state.replace(iterations=values)
         return ControllerBuilder(state)
 
-    def set_epsilon(self, epsilon: float)->ControllerBuilder:
+    def set_epsilon(self, epsilon: float)->"ControllerBuilder":
+        """
+        Sets the epsilon to be a new value.
+
+        :param epsilon: The epsilon to set
+        :return: The new controller builder
+        :raises: ValueError, if epsilon is not a float
+        :raises: ValueError, if epsilon was not between 0-1.
+        """
+
+        if not isinstance(epsilon, float):
+            raise ValueError("Epsilon was not a float")
+        if (epsilon > 1.0) | (epsilon < 0.0):
+            raise ValueError("Epsilon was not between 0 and 1")
+
+        state = self.state.replace(epsilon = epsilon)
+        return ControllerBuilder(state)
+
+    # We need some more helper methods to validate
+    # pytrees
+
+    @staticmethod
+    def _validate_same_pytree_structure(
+            original: PyTree,
+            new: PyTree,
+            field_name: str,
+            key_name: str
+            ):
+        """
+        Validates that the pytree structure is the same between original
+        and new. Raises if not, and uses name parameters to make the
+        messages informative.
+
+        :param original: The original pytree feature
+        :param new: The new pytree feature
+        :param field_name: The name of the field being set to
+        :param item_name: The name of the item in the dictionary
+        :raises: ValueError, if the tree structures are different
+        """
+        if not utils.are_pytree_structure_equal(original, new):
+            msg = f"""
+            The attempt to set to key '{key_name}' in field '{field_name} failed.
+            
+            The original and new pytrees had different tree structures and are not 
+            compatible. If this is intended, use a define statement instead.
+            """
+            msg = textwrap.dedent(msg)
+            raise ValueError(msg)
+
+    @staticmethod
+    def _validate_pytree_leaves(
+        original: PyTree,
+        new: PyTree,
+        field_name: str,
+        key_name: str,
+        ):
+        """
+        Validates that pytree leaves are compatible. The function first
+        checks that the original and new pytree leaves are the same types.
+
+        If the types are of tensor type, it also checks that the shape and
+        dtypes are the same.
+
+        :param original: The original pytree to test
+        :param new: The new pytree to test.
+        :param field_name: The name of the field being checked
+        :param key_name: The name of the key in the field we are setting.
+        :raises: ValueError, if the leaf types are different
+        :raises: ValueError, if the leaf shapes are different
+        :raises: ValueError, if the leaf dtypes are different
+        """
+
+        def check_function(original_leaf: Any,
+                           new_leaf: Any
+                           ):
+            """
+            A check function that inspects two leafs and
+            considers whether or not the new leaf
+            is a compatible replacement of the original.
+
+            :param original_leaf: The original pytree leaf
+            :param new_leaf: The new pytree leaf.
+            :raises: ValueError, if the leaf types are different
+            :raises: ValueError, if the leaves are tensors with different shapes
+            :raises: ValueError, if the leaves are tensors with different dtypes
+            """
+
+            if type(original_leaf) != type(new_leaf):
+                msg = f"""
+                The type of a leaf in pytree named '{key_name}' of field {field_name}
+                is different between the original and new tree. This is not allowed
+                """
+                msg = textwrap.dedent(msg)
+                raise ValueError(msg)
+            if isinstance(original_leaf, (jnp.ndarray, np.ndarray)):
+                if original_leaf.shape != new_leaf.shape:
+                    msg = f"""
+                    The shaoe of some tensors in item '{key_name}' of field '{field_name}' is 
+                    different. The original tensor had shape {original_leaf.shape}, but the 
+                    new tensor has shape {new_leaf.shape}.
+                    """
+                    msg = textwrap.dedent(msg)
+                    raise ValueError(msg)
+                if original_leaf.dtype != new_leaf.dtype:
+                    msg = f"""
+                    The dtype of some tensors in item '{key_name}' of field '{field_name}' do not match.
+                    
+                    The original tensor entry had dtype of {original_leaf.dtype}, but the new update
+                    has a dtype of {new_leaf.dtype}
+                    """
+                    msg = textwrap.dedent(msg)
+                    raise ValueError(msg)
+        utils.merge_pytrees(check_function, original, new)
+
+    def set_accumulator(self, name: str, value: PyTree)->'ControllerBuilder':
+        """
+        Sets an accumulator to be filled with a particular series of values.
+
+        This can only replace like accumulator data with PyTree of the same shape.
+        This means those pytrees must be the same tree shape, the leaves must have the same type,
+        and tensor leaves must be of the same shape and dtype.
+
+        :param name: The name of the accumulator to set
+        :param value: The value to set.
+        :return: The new ControllerBuilder
+        :raises: KeyError, if you are trying to set to an accumulator that was never defined.
+        :raises: ValueError, if your pytree is not compatible.
+        """
+        if name not in self.accumulators:
+            msg = f"""
+            Accumulator of name '{name}' was never setup using a define statement.
+            
+            Use one of the 'define' methods to setup the defaults and the accumulators.
+            This method only allows replacement of already existing features.
+            """
+            msg = textwrap.dedent(msg)
+            raise KeyError(msg)
+
+        self._validate_same_pytree_structure(self.accumulators,
+                                             value,
+                                             field_name="accumulators",
+                                             key_name=name)
+        self._validate_pytree_leaves(self.accumulators,
+                                     value,
+                                     field_name="accumulators",
+                                     key_name=name)
+
+        accumulators = self.accumulators.copy()
+        accumulators[name] = value
+        state = self.state.replace(accumulators=accumulators)
+        return ControllerBuilder(state)
+
+    def set_defaults(self,
+                     name: str,
+                     value: PyTree
+                     )->'ControllerBuilder':
+        """
+        Sets the default values for accumulators to new values. This does not
+        change any tensor shapes or datatypes.
+
+        This can only replace pytree defaults data with other PyTrees of the same shape.
+        This means those pytrees must be the same tree shape, the leaves must have the same type,
+        and tensor leaves must be of the same shape and dtype.
+
+        Additionally, the default must have been defined using one of the 'define' methods.
+
+        :param name: The name of the default to replace
+        :param value: The pytree to replace it with
+        :return: A new ControllerBuilder where these replacements had occurred
+        :raises: KeyError, if you are trying to set a default that was never defined
+        :raises: ValueError, if the pytrees are not compatible.
+        """
+
+        if name not in self.defaults:
+            msg = f"""
+            Defaults of name '{name}' was never setup using a define statement.
+            
+            Use one of the 'define' methods to setup the defaults and the accumulators.
+            This method only allows replacement of already existing features.
+            """
+            msg = textwrap.dedent(msg)
+            raise KeyError(msg)
+
+        self._validate_same_pytree_structure(self.defaults,
+                                             value,
+                                             field_name="defaults",
+                                             key_name=name)
+        self._validate_pytree_leaves(self.defaults,
+                                     value,
+                                     field_name="defaults",
+                                     key_name=name
+                                     )
+
+        defaults = self.defaults.copy()
+        defaults[name] = value
+        state = self.state.replace(defaults=defaults)
+        return ControllerBuilder(state)
 
 
-    # Factories and other assistance.
+
+
+    # Main build methods and objects. These are used to
+    # actually create accumulators in the first place.
+
+    def define_accumulator(self,
+                           name: str,
+                           definition: PyTree,
+                           )->'ControllerBuilder':
+        """
+        Directly define the default state of an accumulator,
+        including it's shape. The passed tensors, or pytree,
+        becomes the default.
+
+        If the accumulator is already setup, it is overwritten
+
+        :param name: The name of the accumulator to setup
+        :param definition: What to start the accumulator with
+        :return: A new ControllerBuilder.
+        """
+
+        if name in self.defaults:
+            warnings.warn("Accumulator and defaults are being overwritten")
+        defaults = self.defaults.copy()
+        accumulato
+
+    def define_accumulator_by_shape(self,
+                                    name: str,
+                                    definition: PyTree,
+                                    dtype: Optional[jnp.dtype] = None
+                                   ):
 
 
 
-    # Creation and editing
+    # Creation, initialization, and editing
+
     @classmethod
     def new_builder(cls,
                     batch_shape: Union[int, List[int]],
@@ -209,6 +434,8 @@ class ControllerBuilder(Immutable):
         super().__init__()
         self.state = state
         self.make_immutable()
+
+
 
 class StateBuilder:
     """

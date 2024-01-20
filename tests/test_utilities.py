@@ -28,6 +28,21 @@ class test_utilities(unittest.TestCase):
         #Test simple throw works
         with self.assertRaises(AssertionError):
             utils.setup_left_broadcast(item1, item3)
+    def test_are_pytree_structure_equal(self):
+        """
+        Test to see if we can detect when pytrees are shaped similarly.
+        """
+
+        tree = {"item1" : random.randn(3, 5, 10, 2)
+                "item2" : random.randn(2, 4, 5),
+                "item3" : [random.randn(2, 4), random.randn(4, 5)]}
+        tree2 = {"item1" : None, "item2" : None, "item3" : [None, None]}
+        tree3 = {}
+
+        # Test if we detect when trees have s
+        self.assertTrue(utils.are_pytree_structure_equal(tree, tree))
+        self.assertTrue(utils.are_pytree_structure_equal(tree, tree2))
+        self.assertFalse(utils.are_pytree_structure_equal(tree, tree3))
 
     def test_merge_pytrees(self):
         """
