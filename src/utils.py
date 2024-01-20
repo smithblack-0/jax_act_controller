@@ -43,6 +43,19 @@ def merge_pytrees(function: Callable[[Any,
 
     return jax.tree_util.tree_unflatten(treedef, new_leaves)
 
+def are_pytree_structure_equal(tree_one: PyTree, tree_two: PyTree)->bool:
+    """
+    Checks if two pytrees are defined using the same structure. Ignores the
+    contents of the leaves.
+
+    :param tree_one: The first tree to compare
+    :param tree_two: The second tree to compare.
+    :return: A bool, whether the pytrees are the same
+    """
+
+    treedef_one = jax.tree_util.tree_structure(tree_one)
+    treedef_two = jax.tree_util.tree_structure(tree_two)
+    return are_pytrees_equal(treedef_one, treedef_two)
 def are_pytrees_equal(tree_one: PyTree, tree_two: PyTree, use_allclose: bool = True)->bool:
     """
     Checks if two pytrees are almost equal to one another.
