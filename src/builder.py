@@ -763,15 +763,25 @@ class ControllerBuilder(Immutable):
             # to find out if it is filled with ints, and
             # return true in those cases.
 
+            contains_integers = False
             if isinstance(node, list):
                 for item in node:
                     if not isinstance(item, int):
                         return False
-                    return True
+                return True
             return False
         def make_tensor(leaf: List[int])->jnp.ndarray:
              # Convert a list of ints into a tensor
              # of the same shape
+             if not is_leaf(leaf):
+                 msg = f"""
+                 The shape definition collection is corrupt. 
+                 
+                 A type of {type(leaf)} was reached, but this is not
+                 a valid list of integers
+                 """
+                 msg = textwrap.dedent(msg)
+                 raise TypeError(msg)
              return jnp.full(leaf, fill_value=fill, dtype=dtype)
 
         # BEGIN: Main logic

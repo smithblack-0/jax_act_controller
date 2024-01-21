@@ -282,9 +282,10 @@ class test_definition_methods(unittest.TestCase):
 
         # Define a valid accumulator by shape
         valid_shape = [3, 3, 3]
+        expected_accumulator = jnp.zeros(valid_shape)
         new_builder = builder.define_accumulator_by_shape("valid_acc", valid_shape)
         self.assertIn("valid_acc", new_builder.defaults)
-
+        self.assertTrue(jnp.all(new_builder.accumulators["valid_acc"] == expected_accumulator))
 
         # Overwrite an existing accumulator (should raise a warning)
         with warnings.catch_warnings(record=True) as w:
@@ -295,24 +296,34 @@ class test_definition_methods(unittest.TestCase):
 
         # Define a valid accumulator, but this time use a pytree to do it
         valid_pytree_shapes = {"items1" : [3, 3, 4], "item2" : [3, 3, 10, 4]}
-        new_builder = builder.define_accumulator_by_shape("tree_acc", valid_shape)
-        self.assertIn("valid_acc", new_builder.defaults)
-        self.assertIn("valid_acc", new_builder.accumulators)
+        expected_pytree = {"items1" : jnp.zeros([3, 3, 4]), "item2" : jnp.zeros([3, 3, 10, 4])}
+        new_builder = builder.define_accumulator_by_shape("tree_acc", valid_pytree_shapes)
+        self.assertIn("tree_acc", new_builder.defaults)
+        self.assertTrue(utils.are_pytrees_equal(new_builder.defaults["tree_acc"], expected_pytree))
 
+        # Define a valid accumulator. Make it be a different dtype
+
+        valid_shape = [3, 3, 3]
+        expected_accumulator = jnp.zeros(valid_shape)
+        new_builder = builder.define_accumulator_by_shape("valid_acc", valid_shape,
+                                                          dtype=jnp.float16)
+        self.assertIn("valid_acc", new_builder.defaults)
+        self.assertTrue(new_builder.defaults["valid_acc"].dtype == jnp.float16)
+        self.assertTrue(jnp.all(new_builder.defaults["valid_acc"] == expected_accumulator))
 
         # Attempt to define an accumulator with invalid shape (non-int list)
         invalid_shape = {"matrix": [3, "bad", 3]}
-        with self.assertRaises(ValueError) as err:
+        with self.assertRaises(TypeError) as err:
             new_builder.define_accumulator_by_shape("invalid_acc", invalid_shape)
         if SHOW_ERROR_MESSAGES:
             print("Testing define_accumulator_by_shape: Invalid shape definition")
             print(err.exception)
 
         # Attempt to define an accumulator with invalid dtype
-        with self.assertRaises(TypeError) as err:
-            new_builder.define_accumulator_by_shape("invalid_acc", valid_shape, dtype="bad_dtype")
+        with self.assertRaises(ValueError) as err:
+            new_builder.define_accumulator_by_shape("invalid_acc", valid_shape, dtype=jnp.int32)
         if SHOW_ERROR_MESSAGES:
             print("Testing define_accumulator_by_shape: Invalid dtype")
             print(err.exception)
-        shape_defs = [[*batch_shape5, ]]
+            print(err.exception.__cause__)
 
