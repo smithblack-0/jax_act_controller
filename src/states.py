@@ -8,7 +8,8 @@ from src.types import PyTree
 @dataclass
 class ACTStates:
     """
-    A collection of ACT state parameters
+    A collection of ACT state parameters and other
+    stateful items needed to perform adaptive computation time.
 
     ---- fields ---
     iteration: The iteration the process is currently on.

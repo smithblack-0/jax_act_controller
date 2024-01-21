@@ -1,5 +1,6 @@
 import unittest
 from numpy import random
+
 from src import utils
 from jax import numpy as jnp
 
@@ -33,13 +34,13 @@ class test_utilities(unittest.TestCase):
         Test to see if we can detect when pytrees are shaped similarly.
         """
 
-        tree = {"item1" : random.randn(3, 5, 10, 2)
+        tree = {"item1" : random.randn(3, 5, 10, 2),
                 "item2" : random.randn(2, 4, 5),
                 "item3" : [random.randn(2, 4), random.randn(4, 5)]}
         tree2 = {"item1" : None, "item2" : None, "item3" : [None, None]}
         tree3 = {}
 
-        # Test if we detect when trees have s
+        # Test if we detect when trees have same structure
         self.assertTrue(utils.are_pytree_structure_equal(tree, tree))
         self.assertTrue(utils.are_pytree_structure_equal(tree, tree2))
         self.assertFalse(utils.are_pytree_structure_equal(tree, tree3))
@@ -69,3 +70,4 @@ class test_utilities(unittest.TestCase):
 
         outcome = utils.merge_pytrees(operator, tree, tree2)
         self.assertTrue(jnp.allclose(outcome['item'], expected['item']))
+

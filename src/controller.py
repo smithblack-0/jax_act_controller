@@ -298,9 +298,9 @@ class ACT_Controller(Immutable):
                                                     halting_probabilities
                                                     )
                 new_accumulator = utils.merge_pytrees(update_function,
-                                                      accumulator_tree,
-                                                      update_tree
-                                                    )
+                                                          accumulator_tree,
+                                                          update_tree
+                                                          )
 
                 accumulators[name] = new_accumulator
                 updates[name] = None # Resets update slot, so we do not think an update was already done.
@@ -375,8 +375,8 @@ class ACT_Controller(Immutable):
                                  default_leaf)
 
             new_accumulator = utils.merge_pytrees(update_func,
-                                                  accumulator,
-                                                  default)
+                                                      accumulator,
+                                                      default)
             accumulators[name] = new_accumulator
 
         # Create the new state, return the new

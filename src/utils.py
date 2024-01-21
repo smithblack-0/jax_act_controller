@@ -1,8 +1,31 @@
+from typing import Callable, Any
+
 import jax
 import numpy as np
 from jax import numpy as jnp
-from typing import Callable, Any
+
 from src.types import PyTree
+
+
+def setup_left_broadcast(tensor: jnp.ndarray,
+                          target: jnp.ndarray
+                          ) -> jnp.ndarray:
+    """
+    Sets up tensor by unsqueezing dimensions for
+    a left broadcast with the target.
+
+    Returns the unsqueezed tensor.
+
+    :param tensor: The tensor to expand
+    :param target: The target whose length to match
+    :return: The unsqueezed tensor
+    """
+
+    assert len(tensor.shape) <= len(target.shape)
+    while len(tensor.shape) < len(target.shape):
+        tensor = tensor[..., None]
+    return tensor
+
 
 def merge_pytrees(function: Callable[[Any,
                                       Any],
@@ -43,19 +66,30 @@ def merge_pytrees(function: Callable[[Any,
 
     return jax.tree_util.tree_unflatten(treedef, new_leaves)
 
+
 def are_pytree_structure_equal(tree_one: PyTree, tree_two: PyTree)->bool:
     """
-    Checks if two pytrees are defined using the same structure. Ignores the
+    Checks if two pytrees are defined using the same tree structure. Ignores the
     contents of the leaves.
 
     :param tree_one: The first tree to compare
     :param tree_two: The second tree to compare.
     :return: A bool, whether the pytrees are the same
     """
+    # It turns out in some cases pytree definitions store information
+    # about the nodes in their tree definitions. This is a weird choice, but
+    # whatever. Our first task is thus o ensure all nodes are filled with the same value
+
+    tree_one = jax.tree_util.tree_map(lambda x : None, tree_one)
+    tree_two = jax.tree_util.tree_map(lambda x : None, tree_two)
+
+    # We compare the tree definitions.
 
     treedef_one = jax.tree_util.tree_structure(tree_one)
     treedef_two = jax.tree_util.tree_structure(tree_two)
-    return are_pytrees_equal(treedef_one, treedef_two)
+    return treedef_one == treedef_two
+
+
 def are_pytrees_equal(tree_one: PyTree, tree_two: PyTree, use_allclose: bool = True)->bool:
     """
     Checks if two pytrees are almost equal to one another.
@@ -78,23 +112,3 @@ def are_pytrees_equal(tree_one: PyTree, tree_two: PyTree, use_allclose: bool = T
     result_tree = merge_pytrees(are_leaves_equal, tree_one, tree_two)
     leaves = jax.tree_util.tree_flatten(result_tree)[0]
     return all(leaves)
-
-
-def setup_left_broadcast(tensor: jnp.ndarray,
-                          target: jnp.ndarray
-                          ) -> jnp.ndarray:
-    """
-    Sets up tensor by unsqueezing dimensions for
-    a left broadcast with the target.
-
-    Returns the unsqueezed tensor.
-
-    :param tensor: The tensor to expand
-    :param target: The target whose length to match
-    :return: The unsqueezed tensor
-    """
-
-    assert len(tensor.shape) <= len(target.shape)
-    while len(tensor.shape) < len(target.shape):
-        tensor = tensor[..., None]
-    return tensor

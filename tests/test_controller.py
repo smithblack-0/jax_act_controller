@@ -7,6 +7,7 @@ import jax
 import traceback
 from numpy import random
 from jax import numpy as jnp
+
 from src import utils
 from src.states import ACTStates
 from src.controller import ACT_Controller
@@ -264,7 +265,7 @@ class test_main_logic(unittest.TestCase):
         # act iteration
 
         mock_state = make_empty_state_mockup()
-        mock_state = mock_state.replace(updates={"test" : jnp.ndarray([1.0, 2.0, 3.0])})
+        mock_state = mock_state.replace(updates={"test" : jnp.array([1.0, 2.0, 3.0])})
 
         with self.assertRaises(RuntimeError) as err:
             update = jnp.array([0.0, 0.0, 0.1])
@@ -280,7 +281,7 @@ class test_main_logic(unittest.TestCase):
         update = jnp.array([0.0, 0.0, 0.1])
 
         mock_state = make_empty_state_mockup()
-        mock_state = mock_state.replace(updates={"test" : None, "test2" : jnp.ndarray([1.0, 2.0, 3.0])})
+        mock_state = mock_state.replace(updates={"test" : None, "test2" : jnp.array([1.0, 2.0, 3.0])})
 
         controller = ACT_Controller(mock_state)
         controller = controller.cache_update("test", update)
@@ -494,4 +495,4 @@ class test_main_logic(unittest.TestCase):
         self.assertTrue(jnp.all(expected_iterations == new_controller.iterations))
         self.assertTrue(jnp.all(expected_probabilities == new_controller.probabilities))
         self.assertTrue(jnp.all(expected_residuals == new_controller.residuals))
-        self.assertTrue(utils.are_pytrees_equal(expected_accumulators,new_controller.accumulators))
+        self.assertTrue(utils.are_pytrees_equal(expected_accumulators, new_controller.accumulators))
