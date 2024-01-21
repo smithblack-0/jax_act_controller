@@ -245,7 +245,14 @@ class ControllerBuilder(Immutable):
             msg = textwrap.dedent(msg)
             raise TypeError(msg)
 
-
+    @staticmethod
+    def _validate_probability(tensor: jnp.ndarray):
+        if jnp.any(tensor < 0.0):
+            msg = "A tensor representing probabilities had elements less than zero"
+            raise ValueError(msg)
+        if jnp.any(tensor > 1.0):
+            msg = "A tensor representing probabilities had elmenents greater than one"
+            raise ValueError(msg)
     def set_probabilities(self, values: jnp.ndarray)->'ControllerBuilder':
         """
         Sets the values of probabilities to something new
@@ -257,6 +264,7 @@ class ControllerBuilder(Immutable):
         try:
             self._validate_set_shape(self.probabilities, values)
             self._validate_set_dtype(self.probabilities, values)
+            self._validate_probability(values)
         except Exception as err:
             msg = """
             This error occurred while setting the probabilities field
@@ -264,7 +272,7 @@ class ControllerBuilder(Immutable):
             msg = textwrap.dedent(msg)
             raise ValueError(msg) from err
 
-        state = self.state.replace(residuals=values)
+        state = self.state.replace(probabilities=values)
         return ControllerBuilder(state)
 
     def set_residuals(self, values: jnp.ndarray)->'ControllerBuilder':
@@ -277,8 +285,13 @@ class ControllerBuilder(Immutable):
         :raises: ValueError, if the new and original residual shape are not the same
         :raises: TypeError, if the new and original residual do not have the same dtye.
         """
-        self._validate_set_shape(self.residuals, values, field_name="residuals")
-        self._validate_set_dtype(self.residuals, values, field_name="residuals")
+        try:
+            self._validate_set_shape(self.residuals, values)
+            self._validate_set_dtype(self.residuals, values)
+            self._validate_probability(values)
+        except Exception as err:
+            msg = "An issue occurred while setting residuals"
+            raise ValueError(msg) from err
 
         state = self.state.replace(residuals=values)
         return ControllerBuilder(state)
@@ -291,9 +304,12 @@ class ControllerBuilder(Immutable):
         :raises: If the new and original shape differ
         :raises: If the dtype is not int32
         """
-
-        self._validate_set_shape(self.iterations, values, field_name="iterations")
-        self._validate_set_dtype(self.iterations, values, field_name="iterations")
+        try:
+            self._validate_set_shape(self.iterations, values)
+            self._validate_set_dtype(self.iterations, values)
+        except Exception as err:
+            msg = "An issue occurred while setting the iterations counters"
+            raise ValueError(msg) from err
 
         state = self.state.replace(iterations=values)
         return ControllerBuilder(state)
@@ -386,7 +402,7 @@ class ControllerBuilder(Immutable):
                 cls._validate_set_shape(original_leaf, new_leaf)
                 cls._validate_set_dtype(original_leaf, new_leaf)
             except ValueError as err:
-                msg = "An issue occurred on tensor dtypes while validating a tensor or tensor collection:  \n"
+                msg = "An issue occurred on tensor shapes while validating a tensor or tensor collection:  \n"
                 msg = msg + str(err)
                 msg = textwrap.dedent(msg)
                 raise ValueError(msg) from err
@@ -422,14 +438,18 @@ class ControllerBuilder(Immutable):
             msg = textwrap.dedent(msg)
             raise KeyError(msg)
 
-        self._validate_same_pytree_structure(self.accumulators,
-                                             value,
-                                             field_name="accumulators",
-                                             key_name=name)
-        self._validate_pytree_leaves(self.accumulators,
-                                     value,
-                                     field_name="accumulators",
-                                     key_name=name)
+        try:
+            self._validate_same_pytree_structure(self.accumulators[name],
+                                                 value)
+            self._validate_pytree_leaves(self.accumulators,
+                                         value)
+        except Exception as err:
+            msg = f"""
+            An issue occurred while setting an accumulator
+            named {name}
+            """
+            msg = textwrap.dedent(msg)
+            raise ValueError(msg) from err
 
         accumulators = self.accumulators.copy()
         accumulators[name] = value
@@ -466,16 +486,16 @@ class ControllerBuilder(Immutable):
             """
             msg = textwrap.dedent(msg)
             raise KeyError(msg)
+        try:
 
-        self._validate_same_pytree_structure(self.defaults,
-                                             value,
-                                             field_name="defaults",
-                                             key_name=name)
-        self._validate_pytree_leaves(self.defaults,
-                                     value,
-                                     field_name="defaults",
-                                     key_name=name
-                                     )
+            self._validate_same_pytree_structure(self.defaults[name],
+                                                 value)
+            self._validate_pytree_leaves(self.defaults[name],
+                                         value
+                                         )
+        except Exception as err:
+            msg = f"An issue occurred while setting defaults of name '{name}'\n"
+            raise ValueError(msg) from err
 
         defaults = self.defaults.copy()
         defaults[name] = value
@@ -484,7 +504,7 @@ class ControllerBuilder(Immutable):
 
     def set_updates(self,
                     name: str,
-                    updates: Optional[PyTree]
+                    values: Optional[PyTree]
                     )->'ControllerBuilder':
         """
         Sets the update values to new values. This does not
@@ -494,7 +514,7 @@ class ControllerBuilder(Immutable):
         shape as the accumulator, or set the updates channel equal to None.
 
         :param name: The name of the default to replace
-        :param updates: The pytree to replace it with, or None
+        :param values: The pytree to replace it with. May also be None
         :return: A new ControllerBuilder where these replacements had occurred
         :raises: KeyError, if you are trying to set a default that was never defined
         :raises: ValueError, if the pytrees are not compatible.
@@ -509,19 +529,20 @@ class ControllerBuilder(Immutable):
             msg = textwrap.dedent(msg)
             raise KeyError(msg)
 
-        if updates is not None:
+        if values is not None:
             # Updates is presumed to be a pytree.
-            self._validate_same_pytree_structure(self.accumulators[name],
-                                                 updates,
-                                                 field_name="defaults",
-                                                 key_name=name)
-            self._validate_pytree_leaves(self.accumulators[name],
-                                         updates,
-                                         field_name="defaults",
-                                         key_name=name
-                                         )
+            try:
+                self._validate_same_pytree_structure(self.accumulators[name],
+                                                     values)
+                self._validate_pytree_leaves(self.accumulators[name],
+                                             values
+                                             )
+            except Exception as err:
+                msg = f"An issue occurred while setting an update for '{name}'"
+                raise ValueError(msg) from err
+
         updates = self.updates.copy()
-        updates[name] = updates
+        updates[name] = values
         state = self.state.replace(updates=updates)
         return ControllerBuilder(state)
 
@@ -807,8 +828,8 @@ class ControllerBuilder(Immutable):
         :return: A new ControllerBuilder instance
         """
         if name not in self.defaults:
-            msg = f"""
-            Accumulator of name '{name}' does not exist, and 
+            msg = f"""\
+            Accumulator of name '{name}' does not exist, and thus
             cannot be deleted.
             """
             msg = textwrap.dedent(msg)

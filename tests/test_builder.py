@@ -326,4 +326,262 @@ class test_definition_methods(unittest.TestCase):
             print("Testing define_accumulator_by_shape: Invalid dtype")
             print(err.exception)
             print(err.exception.__cause__)
+    def test_delete_definition(self):
+        """ Test delete_definition method for various scenarios """
 
+        # Initialize a builder for testing
+        builder = ControllerBuilder.new_builder(batch_shape=[3, 3])
+
+        # Define a valid accumulator
+        valid_accumulator = {"matrix": jnp.zeros([3, 3, 3]), "normalizer": jnp.zeros([3, 3])}
+        builder = builder.define_accumulator_directly("valid_acc", valid_accumulator)
+
+        # Delete the defined accumulator
+        new_builder = builder.delete_definition("valid_acc")
+        self.assertNotIn("valid_acc", new_builder.defaults)
+        self.assertNotIn("valid_acc", new_builder.accumulators)
+        self.assertNotIn("valid_acc", new_builder.updates)
+
+        # Attempt to delete a non-existing accumulator
+        with self.assertRaises(KeyError) as err:
+            new_builder.delete_definition("non_existing_acc")
+        if SHOW_ERROR_MESSAGES:
+            print("Testing delete_definition: Non-existing accumulator")
+            print(err.exception)
+
+class test_setters(unittest.TestCase):
+    def test_set_probabilities(self):
+        """ Test set_probabilities method in ControllerBuilder """
+
+        # Initialize a builder
+        builder = ControllerBuilder.new_builder(batch_shape=[3, 3])
+
+        # Set new values for probabilities
+        new_probabilities = jnp.ones([3, 3])
+        updated_builder = builder.set_probabilities(new_probabilities)
+        print(updated_builder.probabilities)
+        self.assertTrue(jnp.all(updated_builder.probabilities == new_probabilities))
+
+        # Attempt to set probabilities with values above one (should raise ValueError)
+        above_one_probabilities = jnp.full([3, 3], 1.1)  # Values greater than 1
+        with self.assertRaises(ValueError) as err:
+            builder.set_probabilities(above_one_probabilities)
+        if SHOW_ERROR_MESSAGES:
+            print("Testing set_probabilities: Values above one")
+            print(err.exception)
+            print(err.exception.__cause__)
+
+        # Attempt to set probabilities with mismatched shape (should raise ValueError)
+        mismatched_shape_probabilities = jnp.ones([4, 4])
+        with self.assertRaises(ValueError) as err:
+            builder.set_probabilities(mismatched_shape_probabilities)
+        if SHOW_ERROR_MESSAGES:
+            print("Testing set_probabilities: Mismatched shape")
+            print(err.exception)
+            print(err.exception.__cause__)
+
+        # Attempt to set probabilities with mismatched dtype (should raise TypeError)
+        mismatched_dtype_probabilities = jnp.ones([3, 3], dtype=jnp.int32)
+        with self.assertRaises(ValueError) as err:
+            builder.set_probabilities(mismatched_dtype_probabilities)
+        if SHOW_ERROR_MESSAGES:
+            print("Testing set_probabilities: Mismatched dtype")
+            print(err.exception)
+            print(err.exception.__cause__)
+    def test_set_residuals(self):
+        """ Test set_residuals method in ControllerBuilder """
+
+        # Initialize a builder
+        builder = ControllerBuilder.new_builder(batch_shape=[3, 3])
+
+        # Set new values for residuals
+        new_residuals = jnp.ones([3, 3])
+        updated_builder = builder.set_residuals(new_residuals)
+        self.assertTrue(jnp.all(updated_builder.residuals == new_residuals))
+
+        # Attempt to set residuals with mismatched shape (should raise ValueError)
+        mismatched_shape_residuals = jnp.ones([4, 4])
+        with self.assertRaises(ValueError) as err:
+            builder.set_residuals(mismatched_shape_residuals)
+        if SHOW_ERROR_MESSAGES:
+            print("Testing set_residuals: Mismatched shape")
+            print(err.exception)
+            print(err.exception.__cause__)
+
+        # Attempt to set residuals with mismatched dtype (should raise TypeError)
+        mismatched_dtype_residuals = jnp.ones([3, 3], dtype=jnp.int32)
+        with self.assertRaises(ValueError) as err:
+            builder.set_residuals(mismatched_dtype_residuals)
+        if SHOW_ERROR_MESSAGES:
+            print("Testing set_residuals: Mismatched dtype")
+            print(err.exception)
+            print(err.exception.__cause__)
+
+        # Attempt to set residuals with values above one (should raise ValueError)
+        above_one_residuals = jnp.full([3, 3], 1.1)
+        with self.assertRaises(ValueError) as err:
+            builder.set_residuals(above_one_residuals)
+        if SHOW_ERROR_MESSAGES:
+            print("Testing set_residuals: Values above one")
+            print(err.exception)
+            print(err.exception.__cause__)
+
+        # Attempt to set residuals with values below zero (should raise ValueError)
+        below_zero_residuals = jnp.full([3, 3], -0.1)
+        with self.assertRaises(ValueError) as err:
+            builder.set_residuals(below_zero_residuals)
+        if SHOW_ERROR_MESSAGES:
+            print("Testing set_residuals: Values below zero")
+            print(err.exception)
+            print(err.exception.__cause__)
+    def test_set_iterations(self):
+        """ Test set_iterations method in ControllerBuilder """
+
+        # Initialize a builder
+        builder = ControllerBuilder.new_builder(batch_shape=[3, 3])
+
+        # Set new values for iterations (should be int32)
+        new_iterations = jnp.array([[1, 2, 3], [4, 5, 6],[7,9,8]], dtype=jnp.int32)
+        updated_builder = builder.set_iterations(new_iterations)
+        self.assertTrue(jnp.all(updated_builder.iterations == new_iterations))
+
+        # Attempt to set iterations with mismatched shape (should raise ValueError)
+        mismatched_shape_iterations = jnp.array([[1, 2], [3, 4], [5, 6]], dtype=jnp.int32)
+        with self.assertRaises(ValueError) as err:
+            builder.set_iterations(mismatched_shape_iterations)
+        if SHOW_ERROR_MESSAGES:
+            print("Testing set_iterations: Mismatched shape")
+            print(err.exception)
+            print(err.exception.__cause__)
+
+        # Attempt to set iterations with mismatched dtype (should raise TypeError)
+        mismatched_dtype_iterations = jnp.array([[1, 2, 3], [4, 5, 6]], dtype=jnp.float32)
+        with self.assertRaises(ValueError) as err:
+            builder.set_iterations(mismatched_dtype_iterations)
+        if SHOW_ERROR_MESSAGES:
+            print("Testing set_iterations: Mismatched dtype")
+            print(err.exception)
+            print(err.exception.__cause__)
+
+    def test_set_epsilon(self):
+        """ Test set_epsilon method in ControllerBuilder """
+
+        # Initialize a builder
+        builder = ControllerBuilder.new_builder(batch_shape=[3, 3])
+
+        # Set a valid epsilon value
+        new_epsilon = 0.5
+        updated_builder = builder.set_epsilon(new_epsilon)
+        self.assertEqual(updated_builder.state.epsilon, new_epsilon)
+
+        # Attempt to set epsilon with a non-float value (should raise ValueError)
+        non_float_epsilon = "0.5"
+        with self.assertRaises(ValueError) as err:
+            builder.set_epsilon(non_float_epsilon)
+        if SHOW_ERROR_MESSAGES:
+            print("Testing set_epsilon: Non-float value")
+            print(err.exception)
+
+        # Attempt to set epsilon with a value less than 0 (should raise ValueError)
+        below_zero_epsilon = -0.1
+        with self.assertRaises(ValueError) as err:
+            builder.set_epsilon(below_zero_epsilon)
+        if SHOW_ERROR_MESSAGES:
+            print("Testing set_epsilon: Value below zero")
+            print(err.exception)
+
+        # Attempt to set epsilon with a value greater than 1 (should raise ValueError)
+        above_one_epsilon = 1.1
+        with self.assertRaises(ValueError) as err:
+            builder.set_epsilon(above_one_epsilon)
+        if SHOW_ERROR_MESSAGES:
+            print("Testing set_epsilon: Value above one")
+            print(err.exception)
+
+    def test_set_accumulator(self):
+        """ Test set_accumulator method in ControllerBuilder """
+
+        # Initialize a builder and define an accumulator
+        builder = ControllerBuilder.new_builder(batch_shape=[3, 3])
+        initial_accumulator = {"matrix": jnp.zeros([3, 3, 3]), "normalizer": jnp.zeros([3, 3])}
+        builder = builder.define_accumulator_directly("test_acc", initial_accumulator)
+
+        # Set a new value for the defined accumulator
+        new_accumulator_value = {"matrix": jnp.ones([3, 3, 3]), "normalizer": jnp.ones([3, 3])}
+        updated_builder = builder.set_accumulator("test_acc", new_accumulator_value)
+        self.assertTrue(jnp.all(updated_builder.accumulators["test_acc"]["matrix"] == jnp.ones([3, 3, 3])))
+        self.assertTrue(jnp.all(updated_builder.accumulators["test_acc"]["normalizer"] == jnp.ones([3, 3])))
+
+        # Attempt to set a non-existing accumulator (should raise KeyError)
+        with self.assertRaises(KeyError) as err:
+            builder.set_accumulator("non_existing_acc", new_accumulator_value)
+        if SHOW_ERROR_MESSAGES:
+            print("Testing set_accumulator: Non-existing accumulator")
+            print(err.exception)
+
+        # Attempt to set an accumulator with incompatible pytree (should raise ValueError)
+        incompatible_accumulator_value = {"matrix": jnp.ones([4, 4, 4]), "normalizer": jnp.ones([3, 3])}
+        with self.assertRaises(ValueError) as err:
+            builder.set_accumulator("test_acc", incompatible_accumulator_value)
+        if SHOW_ERROR_MESSAGES:
+            print("Testing set_accumulator: Incompatible accumulator value")
+            print(err.exception)
+            print(err.exception.__cause__)
+    def test_set_defaults(self):
+        """ Test set_defaults method in ControllerBuilder """
+
+        # Initialize a builder and define an accumulator with defaults
+        builder = ControllerBuilder.new_builder(batch_shape=[3, 3])
+        initial_default = {"matrix": jnp.zeros([3, 3, 3]), "normalizer": jnp.zeros([3, 3])}
+        builder = builder.define_accumulator_directly("test_acc", initial_default)
+
+        # Set new default values for the defined accumulator
+        new_default_value = {"matrix": jnp.ones([3, 3, 3]), "normalizer": jnp.ones([3, 3])}
+        updated_builder = builder.set_defaults("test_acc", new_default_value)
+        self.assertTrue(jnp.all(updated_builder.defaults["test_acc"]["matrix"] == jnp.ones([3, 3, 3])))
+        self.assertTrue(jnp.all(updated_builder.defaults["test_acc"]["normalizer"] == jnp.ones([3, 3])))
+
+        # Attempt to set defaults for a non-existing accumulator (should raise KeyError)
+        with self.assertRaises(KeyError) as err:
+            builder.set_defaults("non_existing_acc", new_default_value)
+        if SHOW_ERROR_MESSAGES:
+            print("Testing set_defaults: Non-existing accumulator")
+            print(err.exception)
+
+        # Attempt to set defaults with incompatible pytree (should raise ValueError)
+        incompatible_default_value = {"matrix": jnp.ones([4, 4, 4]), "normalizer": jnp.ones([3, 3])}
+        with self.assertRaises(ValueError) as err:
+            builder.set_defaults("test_acc", incompatible_default_value)
+        if SHOW_ERROR_MESSAGES:
+            print("Testing set_defaults: Incompatible default value")
+            print(err.exception)
+            print(err.exception.__cause__)
+    def test_set_updates(self):
+        """ Test set_updates method in ControllerBuilder """
+
+        # Initialize a builder and define an accumulator
+        builder = ControllerBuilder.new_builder(batch_shape=[3, 3])
+        initial_accumulator = {"matrix": jnp.zeros([3, 3, 3]), "normalizer": jnp.zeros([3, 3])}
+        builder = builder.define_accumulator_directly("test_acc", initial_accumulator)
+
+        # Set new update values for the defined accumulator
+        new_update_value = {"matrix": jnp.ones([3, 3, 3]), "normalizer": jnp.ones([3, 3])}
+        updated_builder = builder.set_updates("test_acc", new_update_value)
+        self.assertTrue(jnp.all(updated_builder.updates["test_acc"]["matrix"] == jnp.ones([3, 3, 3])))
+        self.assertTrue(jnp.all(updated_builder.updates["test_acc"]["normalizer"] == jnp.ones([3, 3])))
+
+        # Attempt to set updates for a non-existing accumulator (should raise KeyError)
+        with self.assertRaises(KeyError) as err:
+            builder.set_updates("non_existing_acc", new_update_value)
+        if SHOW_ERROR_MESSAGES:
+            print("Testing set_updates: Non-existing accumulator")
+            print(err.exception)
+
+        # Attempt to set updates with incompatible pytree (should raise ValueError)
+        incompatible_update_value = {"matrix": jnp.ones([4, 4, 4]), "normalizer": jnp.ones([3, 3])}
+        with self.assertRaises(ValueError) as err:
+            builder.set_updates("test_acc", incompatible_update_value)
+        if SHOW_ERROR_MESSAGES:
+            print("Testing set_updates: Incompatible update value")
+            print(err.exception)
+            print(err.exception.__cause__)
