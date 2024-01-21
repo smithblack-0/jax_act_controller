@@ -95,14 +95,15 @@ class ControllerBuilder(Immutable):
     instance. You can now view as properties all underlying features
     of the states. See properties to know what is available.
 
-    You can now do three things
+    You can now do four things
 
     * Replace a tensor using one of the set_ methods with another tensor of same shape or dtype
     * Overwrite an existing accumulator with a new one using a define_ method.
+    * Define a new accumulator using a define_ method
     * Delete an existing accumulator using the delete_definition method.
 
     Editing the shape of the batch, however useful, is strictly forbidden for reasons
-    of jit compatibility.
+    of jax jit compatibility.
 
     ---- properties ----
 
