@@ -4,7 +4,7 @@ import jax
 import numpy as np
 from jax import numpy as jnp
 
-from src.types import PyTree
+from src.jax_act.types import PyTree
 
 
 def setup_left_broadcast(tensor: jnp.ndarray,

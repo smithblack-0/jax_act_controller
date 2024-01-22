@@ -4,13 +4,14 @@ Tests for the builder act mechanism
 
 import itertools
 import unittest
-import jax
 import warnings
+import jax
 
 from jax import numpy as jnp
-from src.builder import ControllerBuilder
-from src.states import ACTStates
-from src import utils
+from src.jax_act.builder import ControllerBuilder
+from src.jax_act.states import ACTStates
+from src.jax_act import utils
+from src.jax_act.controller import ACT_Controller
 
 SHOW_ERROR_MESSAGES = True
 
@@ -585,3 +586,21 @@ class test_setters(unittest.TestCase):
             print("Testing set_updates: Incompatible update value")
             print(err.exception)
             print(err.exception.__cause__)
+
+class test_jittable(unittest.TestCase):
+    """
+    Tests for jit jax compatibility.
+    """
+    def test_create_jittable(self):
+        batch_shape = 10
+        state_shape = [batch_shape, 20]
+        output_shape = [batch_shape, 10]
+        def build_controller()->ACT_Controller:
+            builder = ControllerBuilder.new_builder(batch_shape)
+            builder = builder.define_accumulator_by_shape("state", state_shape)
+            builder = builder.define_accumulator_by_shape("output", output_shape)
+            return builder.build()
+        jax.config.update("jax_traceback_filtering", "off")
+
+        jitted_build_creator = jax.jit(build_controller)
+        controller = jitted_build_creator()

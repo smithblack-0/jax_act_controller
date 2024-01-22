@@ -2,15 +2,14 @@
 Unit tests to test the controller is functioning adequetely
 """
 
-import unittest
 import jax
-import traceback
+import unittest
 from numpy import random
 from jax import numpy as jnp
 
-from src import utils
-from src.states import ACTStates
-from src.controller import ACT_Controller
+from src.jax_act import utils
+from src.jax_act.states import ACTStates
+from src.jax_act.controller import ACT_Controller
 
 SHOW_ERROR_MESSAGES = True
 def make_empty_state_mockup() -> ACTStates:
@@ -496,3 +495,42 @@ class test_main_logic(unittest.TestCase):
         self.assertTrue(jnp.all(expected_probabilities == new_controller.probabilities))
         self.assertTrue(jnp.all(expected_residuals == new_controller.residuals))
         self.assertTrue(utils.are_pytrees_equal(expected_accumulators, new_controller.accumulators))
+
+class test_jit(unittest.TestCase):
+    """
+    Test that the controller object can be integrated as a jitted object
+    """
+    def make_mock_state(self)->ACTStates:
+        act_state = ACTStates(0.001,
+                              jnp.array([0, 0]),
+                              jnp.array([0.0, 0.0]),
+                              jnp.array([0.0, 0.0]),
+                              {"item" : jnp.array([0.0, 0.2])},
+                              {"item" : jnp.array([0.0, 0.3])},
+                              {"item" : None}
+
+        )
+        return act_state
+
+    def test_return_controller(self):
+        """
+        Test we can return a controller from a function, that has been
+        jitted
+        """
+
+        # Test we can make, and jit, a function
+        # that will return a controller
+        jax.config.update("jax_traceback_filtering", "off")
+
+        state = self.make_mock_state()
+        def make_controller(state):
+            return ACT_Controller(state)
+
+        jitted_controller = jax.jit(make_controller)
+        controller = jitted_controller(state)
+
+        # Test if we can still me meaningfully use that function
+        controller = controller.cache_update("item", jnp.array([4.0, 0.3]))
+        new_controller = controller.iterate_act(jnp.array([0.2, 0.3]))
+        self.assertTrue(jnp.any(new_controller.probabilities != controller.probabilities))
+        print(new_controller.probabilities)

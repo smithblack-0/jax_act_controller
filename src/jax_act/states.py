@@ -1,8 +1,8 @@
 import jax
-from dataclasses import dataclass
-from typing import Dict, Optional, Any
+from dataclasses import dataclass, asdict
+from typing import Dict, Optional, Any, Tuple
 from jax import numpy as jnp
-from src.types import PyTree
+from src.jax_act.types import PyTree
 
 
 @dataclass
@@ -12,14 +12,14 @@ class ACTStates:
     stateful items needed to perform adaptive computation time.
 
     ---- fields ---
-    iteration: The iteration the process is currently on.
-    residuals: Holds accumulated residuals during the act process
+    epsilon: A float, used to calculate a halting threshold.
+
+    iterations: A batch shaped tensor, counting how many iterations have been done per batch
+    residuals: Holds accumulated residuals during the act process.
     probabilities: Holds cumulative probabilities during the act process
     defaults: Holds the reset defaults during the act process, in case you reset just a channel.
-              Generally, set once and never changed.
     accumulators: Holds the accumulated values.
     updates: Holds the accumulator updates while they are getting gathered.
-
     """
     def replace(self,
                 epsilon: Optional[float] = None,
@@ -49,7 +49,7 @@ class ACTStates:
         if updates is None:
             updates = self.updates
         if defaults is None:
-            defailts = self.defaults
+            defaults = self.defaults
 
         return ACTStates(epsilon,
                          iterations,
@@ -67,26 +67,24 @@ class ACTStates:
     updates: Dict[str, Optional[PyTree]]
 
 
-def state_flatten(state: ACTStates) -> Any:
+def state_flatten(state: ACTStates) -> Tuple[Any, Any]:
+    state = asdict(state)
 
-    output = []
-    output.append(state.epsilon)
-    output.append(state.iterations)
-    output.append(state.residuals)
-    output.append(state.probabilities)
-    output.append(state.defaults)
-    output.append(state.accumulators)
-    output.append(state.updates)
-    return output, None
+    aux_out = []
+    values = []
+    for key, value in state.items():
+        value, aux = jax.tree_util.tree_flatten(value)
 
-
+        aux_out.append(aux)
+        values.append(value)
+    return zip(state.keys(), values), aux_out
 def state_unflatten(aux_data: Any, flat_state: Any) -> ACTStates:
-    return ACTStates(*flat_state)
 
-jax.tree_util.register_pytree_node(ACTStates, state_flatten, state_unflatten)
+    values = []
+    for value, tree_def in zip(flat_state, aux_data):
+        value = jax.tree_util.tree_unflatten(tree_def, value)
+        values.append(value)
+    return ACTStates(*values)
 
-
-@dataclass
-class ViewerConfig:
-    mask: jnp.ndarray
+jax.tree_util.register_pytree_with_keys(ACTStates, state_flatten, state_unflatten)
 

@@ -15,12 +15,11 @@ import numpy as np
 import warnings
 from jax import numpy as jnp
 
-import src.utils
-from src import utils
-from src.states import ACTStates
-from src.types import PyTree, PyTreeShapes
-from src.immutable import Immutable
-from src.controller import ACT_Controller
+from src.jax_act import utils
+from src.jax_act.states import ACTStates
+from src.jax_act.types import PyTree, PyTreeShapes
+from src.jax_act.immutable import Immutable
+from src.jax_act.controller import ACT_Controller
 
 
 class ControllerBuilder(Immutable):
@@ -350,7 +349,7 @@ class ControllerBuilder(Immutable):
         :param new: The new pytree feature
         :raises: ValueError, if the tree structures are different
         """
-        if not src.utils.are_pytree_structure_equal(original, new):
+        if not utils.are_pytree_structure_equal(original, new):
             msg = f"""
             The original tensor collection or tensor does not have the 
             same tree structure as the new tensor collection or tensor.
@@ -413,7 +412,7 @@ class ControllerBuilder(Immutable):
                 msg = msg + str(err)
                 raise TypeError(msg) from err
 
-        src.utils.merge_pytrees(check_function, original, new)
+        utils.merge_pytrees(check_function, original, new)
 
     def set_accumulator(self, name: str, value: PyTree)->'ControllerBuilder':
         """
@@ -902,6 +901,8 @@ class ControllerBuilder(Immutable):
         """
         return ControllerBuilder(save)
 
+
+
     def build(self)->ACT_Controller:
         """
         Build the act controller
@@ -922,3 +923,13 @@ class ControllerBuilder(Immutable):
         self.state = state
         self.make_immutable()
 
+def flatten_builder(builder: ControllerBuilder)->Tuple[Any, Any]:
+    state = builder.state
+    flat_state, tree_def = jax.tree_util.tree_flatten(state)
+    return (flat_state, tree_def)
+
+def unflatten_builder(aux_data: Any, flat_state: Any)->ControllerBuilder:
+    state = jax.tree_util.tree_unflatten(aux_data, flat_state)
+    return ControllerBuilder(state)
+
+jax.tree_util.register_pytree_node(ControllerBuilder, flatten_builder, unflatten_builder)

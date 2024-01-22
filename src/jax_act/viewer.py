@@ -3,10 +3,10 @@ from jax import numpy as jnp
 
 from typing import Dict
 
-from src.types import PyTree
-from src.immutable import Immutable
-from src.states import ACTStates, ViewerConfig
-from src import utils
+from src.jax_act.types import PyTree
+from src.jax_act.immutable import Immutable
+from src.jax_act.states import ACTStates
+from src.jax_act import utils
 
 
 class ACT_Viewer(Immutable):

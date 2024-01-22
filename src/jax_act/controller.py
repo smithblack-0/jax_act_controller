@@ -6,16 +6,15 @@ some degree of error checking.
 
 from typing import Optional, Any, Tuple
 
-from src.viewer import ACT_Viewer
-from src.states import ACTStates
-from src.immutable import Immutable
-from src import utils
-
+from src.jax_act.viewer import ACT_Viewer
+from src.jax_act.states import ACTStates
+from src.jax_act.immutable import Immutable
+from src.jax_act import utils
 
 import jax.tree_util
 import textwrap
 from jax import numpy as jnp
-from src.types import PyTree
+from src.jax_act.types import PyTree
 
 
 class ACT_Controller(Immutable):
@@ -150,13 +149,13 @@ class ACT_Controller(Immutable):
         # are still useful for probability clamping
 
         raw_residuals = 1 - self.probabilities
-        residuals = jnp.where(newly_halting, raw_residuals, self.residuals)
+        residuals = jax.lax.select(newly_halting, raw_residuals, self.residuals)
 
         # Halting probabilities are clamped to the raw residual entries
         # where they will be halted. This ensures total probability can
         # never exceed one.
 
-        halting_probabilities = jnp.where(will_be_halted, raw_residuals, halting_probabilities)
+        halting_probabilities = jax.lax.select(will_be_halted, raw_residuals, halting_probabilities)
 
         # Finally, cumulative probabilities are updated to contain the sum
         # of the halting probabilities and the current cumulative probabilities
@@ -205,12 +204,13 @@ class ACT_Controller(Immutable):
         halted_batches = self.halted_batches
         halting_probabilities = utils.setup_left_broadcast(halting_probabilities, accumulator_value)
         halted_batches = utils.setup_left_broadcast(halted_batches, accumulator_value)
+        halted_batches = jnp.broadcast_to(halted_batches, accumulator_value.shape)
 
         # We weight then add. The result is then created into an update, but
         # only accumulators which have not already reached a halting state get updated.
 
         new_accumulators = accumulator_value + halting_probabilities * update_value
-        return jnp.where(halted_batches, accumulator_value, new_accumulators)
+        return jax.lax.select(halted_batches, accumulator_value, new_accumulators)
 
 
     # Main loop logic
@@ -249,8 +249,8 @@ class ACT_Controller(Immutable):
         if halting_probabilities.shape != self.probabilities.shape:
             raise ValueError("Batch shape and shapes of halting probabilities do not match")
 
-        if jnp.any((halting_probabilities > 1) | (halting_probabilities < 0)):
-            raise ValueError("Halting probabities were not between 0 and 1 inclusive")
+        #if jnp.any(halting_probabilities > 1) | jnp.any(halting_probabilities < 0):
+        #    raise ValueError("Halting probabities were not between 0 and 1 inclusive")
 
         # Compute and manage probability quantities.
         #
@@ -298,9 +298,9 @@ class ACT_Controller(Immutable):
                                                     halting_probabilities
                                                     )
                 new_accumulator = utils.merge_pytrees(update_function,
-                                                          accumulator_tree,
-                                                          update_tree
-                                                          )
+                                                      accumulator_tree,
+                                                      update_tree
+                                                      )
 
                 accumulators[name] = new_accumulator
                 updates[name] = None # Resets update slot, so we do not think an update was already done.
@@ -312,7 +312,7 @@ class ACT_Controller(Immutable):
         # not reached the halting state
 
         new_iterations = self.iterations + 1
-        iterations = jnp.where(self.halted_batches, self.iterations, new_iterations)
+        iterations = jax.lax.select(self.halted_batches, self.iterations, new_iterations)
 
         # Create the updated state. Return.
 
@@ -370,13 +370,14 @@ class ACT_Controller(Immutable):
                 # Then reset to defaults where appropriate and return.
                 broadcastable_selector = utils.setup_left_broadcast(unhalted_batch_selector,
                                                                     accumulator)
-                return jnp.where(broadcastable_selector,
-                                 accumulator_leaf,
-                                 default_leaf)
+                broadcastable_selector = jnp.broadcast_to(broadcastable_selector, accumulator_leaf.shape)
+                return jax.lax.select(broadcastable_selector,
+                                     accumulator_leaf,
+                                     default_leaf)
 
             new_accumulator = utils.merge_pytrees(update_func,
-                                                      accumulator,
-                                                      default)
+                                                  accumulator,
+                                                  default)
             accumulators[name] = new_accumulator
 
         # Create the new state, return the new
@@ -412,11 +413,13 @@ class ACT_Controller(Immutable):
         self.state = state
         self.make_immutable()
 
-def flatten_controller(controller: ACT_Controller)->Tuple[ACTStates, Any]:
+def flatten_controller(controller: ACT_Controller)->Tuple[Any, Any]:
     state = controller.save()
-    return state, None
+    flat_state, tree_def = jax.tree_util.tree_flatten(state)
+    return flat_state, tree_def
 
-def unflatten_controller(aux: Any, state: ACTStates)->ACT_Controller:
+def unflatten_controller(aux: Any, flat_state: ACTStates)->ACT_Controller:
+    state = jax.tree_util.tree_unflatten(aux, flat_state)
     return ACT_Controller.load(state)
 
 jax.tree_util.register_pytree_node(ACT_Controller, flatten_controller, unflatten_controller)
