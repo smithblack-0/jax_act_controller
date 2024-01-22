@@ -534,3 +534,18 @@ class test_jit(unittest.TestCase):
         new_controller = controller.iterate_act(jnp.array([0.2, 0.3]))
         self.assertTrue(jnp.any(new_controller.probabilities != controller.probabilities))
         print(new_controller.probabilities)
+
+    def test_access_properties(self):
+        """ Test we can access and use properties in the jitted state"""
+
+        jax.config.update("jax_traceback_filtering", "off")
+
+        state = self.make_mock_state()
+        def make_controller(state):
+            return ACT_Controller(state)
+
+        jitted_controller = jax.jit(make_controller)
+        controller = jitted_controller(state)
+
+        controller.halted_batches
+        controller.is_completely_halted
