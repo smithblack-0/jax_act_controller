@@ -534,18 +534,44 @@ class test_jit(unittest.TestCase):
         new_controller = controller.iterate_act(jnp.array([0.2, 0.3]))
         self.assertTrue(jnp.any(new_controller.probabilities != controller.probabilities))
         print(new_controller.probabilities)
+    def test_cache_act(self):
+        """ Test that cache act performs correctly when the method has been jitted."""
+        update = jnp.array([0.0, 0.0, 0.1])
 
+        mock_state = make_empty_state_mockup()
+        mock_state = mock_state.replace(updates={"test" : None, "test2" : jnp.array([1.0, 2.0, 3.0])})
+
+        controller = ACT_Controller(mock_state)
+        def jit_cache_test(update: jnp.ndarray)->ACT_Controller:
+            #NOTE: Must assign function to statically push into
+            # test. Jax jit does not support jitting methods
+            # with strings without using staticargnums.
+            return controller.cache_update("test", update)
+
+        jit_cache_update = jax.jit(jit_cache_test)
+        controller = jit_cache_update(update)
+        self.assertTrue(jnp.all(controller.state.updates["test"] == update))
     def test_access_properties(self):
         """ Test we can access and use properties in the jitted state"""
 
         jax.config.update("jax_traceback_filtering", "off")
 
         state = self.make_mock_state()
-        def make_controller(state):
-            return ACT_Controller(state)
 
-        jitted_controller = jax.jit(make_controller)
-        controller = jitted_controller(state)
+        def access_properties(state):
+            controller = ACT_Controller(state)
 
-        controller.halted_batches
-        controller.is_completely_halted
+            output = {}
+            output["probabilities"] = controller.probabilities
+            output["residuals"] = controller.residuals
+            output["accumulator"] = controller.accumulators
+            output["halted_batches"] = controller.halted_batches
+            output["is_any_halted"] = controller.is_any_halted
+            output["is_completely_halted"] = controller.is_completely_halted
+            output["halt_threshold"] = controller.halt_threshold
+            return output
+
+
+        jitted_access = jax.jit(access_properties)
+        properties = jitted_access(state)
+

@@ -12,10 +12,13 @@ from src import jax_act
 
 
 
-class test_common_dynamic_act_processes(unittest.TestCase):
+class test_act_processes(unittest.TestCase):
     """
-    Test that common act processes are easily
+    Test that some act processes are easily
     handled using the provided features.
+
+    These are run in standard mode, without
+    any compilation or jit mechanisms.
     """
 
     def test_basic_act(self):
@@ -57,7 +60,12 @@ class test_common_dynamic_act_processes(unittest.TestCase):
 
 
 class test_functional_act_processes(unittest.TestCase):
-    def test_basic_act(self):
+    def test_basic_act_functional(self):
+        """
+        Test that we can perform a vanilla act
+        loop as laid out in the paper while operating
+        in functional mode. This means using jax.lax.while_loop.
+        """
 
         batch_shape = 10
         state_shape = [batch_shape, 20]
@@ -91,7 +99,9 @@ class test_functional_act_processes(unittest.TestCase):
 
         def check_if_done(act_state: act_current_state)->bool:
             controller, _ = act_state
-            return not controller.is_completely_halted
+            #Note: It is VERY important the following logical negation is
+            # not performed using the "not" operator
+            return ~controller.is_completely_halted
 
         def run_act_process(act_state: act_current_state):
             controller, state = act_state
@@ -106,23 +116,34 @@ class test_functional_act_processes(unittest.TestCase):
 
             return (controller, new_state)
 
-        run_act_jit = jax.jit(run_act_process)
 
-        # Raw loop
+        # Standard loop. For comparison purposes.
         internal_state = build_initial()
         while check_if_done(internal_state):
             internal_state = run_act_process(internal_state)
+        normal_controller, _ = internal_state
 
-        controller, _ = internal_state
-        print(controller.probabilities)
+        # Functional loop.
+        act_initial_state = build_initial()
+        act_final_state = jax.lax.while_loop(check_if_done, run_act_process, act_initial_state)
+        functional_controller, _ = act_final_state
 
-        # This loop
+        original_leafs, _ = jax.tree_util.tree_flatten(normal_controller)
+        functional_leafs, _ = jax.tree_util.tree_flatten(functional_controller)
 
-        act_current_state = build_initial()
-        act_final_state = jax.lax.fori_loop(0, 10, lambda i, x : run_act_process(x), act_current_state)
-        controller, _, = act_final_state
-        print(controller.probabilities)
+        # Handle the epsilon separately.
+        #
+        # Unfortunately, the types are different, so we have to manually
+        # pull it out and compare
 
-        #act_initial_state = build_initial()
-        #act_final_state = jax.lax.while_loop(check_if_done, run_act_process, act_initial_state)
+        original_epsilon = original_leafs[0]
+        functional_epsilon = functional_leafs[0]
+        self.assertTrue(original_epsilon == functional_epsilon)
+
+        # Handle the array checks
+
+        original_leafs = original_leafs[1:]
+        functional_leafs = functional_leafs[1:]
+        self.assertTrue(jax_act.utils.are_pytrees_equal(original_leafs, functional_leafs))
+
 
