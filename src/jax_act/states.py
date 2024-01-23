@@ -67,6 +67,12 @@ class ACTStates:
     updates: Dict[str, Optional[PyTree]]
 
 
+# We define the functions to represent ACTStates as a pytree,
+# and then register the tree.
+#
+# This involves manually pulling out and then flattening
+# the keys from the state, and doing the reverse to put
+# everything back together.
 def state_flatten(state: ACTStates) -> Tuple[Any, Any]:
     state = asdict(state)
 

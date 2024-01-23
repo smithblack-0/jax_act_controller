@@ -9,7 +9,7 @@ from src.jax_act.states import ACTStates
 from src.jax_act import utils
 
 
-class ACT_Viewer(Immutable):
+class ACTViewer(Immutable):
     """
     A class used to isolate views of act features.
 

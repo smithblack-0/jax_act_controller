@@ -6,7 +6,7 @@ some degree of error checking.
 
 from typing import Optional, Any, Tuple
 
-from src.jax_act.viewer import ACT_Viewer
+from src.jax_act.viewer import ACTViewer
 from src.jax_act.states import ACTStates
 from src.jax_act.immutable import Immutable
 from src.jax_act import utils
@@ -394,13 +394,13 @@ class ACT_Controller(Immutable):
 
     # Viewing and other functionalities
 
-    def make_viewer(self)->ACT_Viewer:
+    def make_viewer(self)->ACTViewer:
         """
         Creates an act viewer for advanced viewing of
         tensors.
         :return: An ACT Viewer with the same tensors as the controller
         """
-        return ACT_Viewer(self.state)
+        return ACTViewer(self.state)
 
     # Saving, loading, and pytrees
     def save(self)->ACTStates:
@@ -418,7 +418,7 @@ def flatten_controller(controller: ACT_Controller)->Tuple[Any, Any]:
     flat_state, tree_def = jax.tree_util.tree_flatten(state)
     return flat_state, tree_def
 
-def unflatten_controller(aux: Any, flat_state: ACTStates)->ACT_Controller:
+def unflatten_controller(aux: Any, flat_state: Any)->ACT_Controller:
     state = jax.tree_util.tree_unflatten(aux, flat_state)
     return ACT_Controller.load(state)
 

@@ -57,8 +57,6 @@ class test_act_processes(unittest.TestCase):
         print(controller.iterations)
         print(controller.accumulators)
 
-
-
 class test_functional_act_processes(unittest.TestCase):
     def test_basic_act_functional(self):
         """
