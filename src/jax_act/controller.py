@@ -126,7 +126,7 @@ class ACT_Controller(Immutable):
                                         jnp.ndarray
                                         ]:
         """
-        Process the halting probabilities into the clamped
+        Process a halting probability. This will mean skipping any upateinto the clamped
         halting probabilities, the residuals, and the new cumulative probabilities
         :param halting_probabilities: The current halting probabilities
         :return: The clamped halting probabilities

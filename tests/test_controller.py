@@ -399,7 +399,7 @@ class test_main_logic(unittest.TestCase):
         accumulator = {"state": jnp.array([[3.0, 4.0, -1.0], [0.5, 1.2, 2.1],[0.7, 0.3, 0.5]]),
                        "output" : jnp.array([[0.1, 0.1, 0.1], [1.0, 0.7, 0.3], [0.1, 0.1, 0.1]])
                        }
-        update = {"state" : jnp.array([[1.0, 1.0, 1.0],[2.0, 2.0, 2.0], [-1.0, 2.0, 1.0]]),
+        defaults = {"state" : jnp.array([[1.0, 1.0, 1.0],[2.0, 2.0, 2.0], [-1.0, 2.0, 1.0]]),
                   "output" : jnp.array([[0.1, 0.2, 0.2],[1.2, 1.2, 1.2], [0.1, 0.1, 0.1]])}
 
 
@@ -575,3 +575,5 @@ class test_jit(unittest.TestCase):
         jitted_access = jax.jit(access_properties)
         properties = jitted_access(state)
 
+    def test_iterate_act_jit(self):
+        """ Test that iterate act is jittable"""
