@@ -591,10 +591,13 @@ class test_jittable(unittest.TestCase):
     """
     Tests for jit jax compatibility.
     """
-    def test_create_jittable(self):
+
+    def test_build_jittable(self):
+        """Test if the creation of a builder is jit compatible"""
         batch_shape = 10
         state_shape = [batch_shape, 20]
         output_shape = [batch_shape, 10]
+
         def build_controller()->ACT_Controller:
             builder = ControllerBuilder.new_builder(batch_shape)
             builder = builder.define_accumulator_by_shape("state", state_shape)
@@ -604,3 +607,28 @@ class test_jittable(unittest.TestCase):
 
         jitted_build_creator = jax.jit(build_controller)
         controller = jitted_build_creator()
+    def test_properties_jit(self):
+        """Test if accessing properties is jit compatible, for all relevant properties"""
+
+        batch_shape = 10
+        state_shape = [batch_shape, 20]
+        output_shape = [batch_shape, 10]
+
+        builder = ControllerBuilder.new_builder(batch_shape)
+        builder = builder.define_accumulator_by_shape("state", state_shape)
+        builder = builder.define_accumulator_by_shape("output", output_shape)
+
+        # Define the various getter cases, in terms of uncalled
+        # functions. Then call the built jit stup
+        epsilon = jax.jit(lambda : builder.epsilon)()
+        iterations = jax.jit(lambda : builder.iterations)()
+        probabilities = jax.jit(lambda : builder.probabilities)()
+        residuals = jax.jit(lambda : builder.residuals)()
+        defaults = jax.jit(lambda : builder.defaults)()
+        accumulators = jax.jit(lambda : builder.accumulators)()
+        updates = jax.jit(lambda  : builder.updates)()
+
+
+
+        # Call the
+
