@@ -6,6 +6,7 @@ import jax
 import unittest
 from numpy import random
 from jax import numpy as jnp
+from jax.experimental import checkify
 
 from src.jax_act import utils
 from src.jax_act.states import ACTStates
@@ -111,7 +112,6 @@ class test_properties(unittest.TestCase):
         # as halted.
 
         epsilon = 0.1
-        halt_threshold = 1 - epsilon
 
         mock_probabilities = jnp.array([0.1, 0.3, 0.4, 0.99])
         expected_halted = jnp.array([False, False, False, True])
@@ -131,7 +131,22 @@ class test_private_helpers(unittest.TestCase):
     We mock up data to represent a condition, then see if the
     helpers act appropriately to produce a new state
     """
+    def test_validate_probabilities(self):
+        """ Test that probabilities are validated as expected"""
 
+        # Test we raise when too high
+        with self.assertRaises(jax._src.checkify.JaxRuntimeError):
+            err, _ = ACT_Controller.validate_probability(jnp.array([0, 3.0]))
+            err.throw()
+
+        # Test we raise when too low
+        with self.assertRaises(jax._src.checkify.JaxRuntimeError):
+            err, _ = ACT_Controller.validate_probability(jnp.array([0, -1.0]))
+            err.throw()
+
+        # Test we do not raise under valid conditions
+        err, _ = ACT_Controller.validate_probability(jnp.array([0, 0.3]))
+        err.throw()
     def test_process_probabilities(self):
         """ Test that probability processing is acting as expected"""
 
@@ -319,28 +334,6 @@ class test_main_logic(unittest.TestCase):
         if SHOW_ERROR_MESSAGES:
             print("iterate_act error message: When halting probabilities have wrong shape")
             print(err.exception)
-        # Test we detect when halting probabilities are out of range - low
-        controller = ACT_Controller(sane_state)
-
-        halting_probabilities = jnp.array([-0.1, 0.3, 0.0])
-        print(controller.iterate_act(halting_probabilities))
-        with self.assertRaises(ValueError) as err:
-            halting_probabilities = jnp.array([-0.1, 0.3, 0.0])
-            controller.iterate_act(halting_probabilities)
-
-        if SHOW_ERROR_MESSAGES:
-            print("iterate_act error message: When halting probabilities are below zero")
-            print(err.exception)
-
-        # Test we detect when halting probabilities are out of range - too high
-        controller = ACT_Controller(sane_state)
-        with self.assertRaises(ValueError) as err:
-            halting_probabilities = jnp.array([0.2, 2.4, 0.2])
-            controller.iterate_act(halting_probabilities)
-
-        if SHOW_ERROR_MESSAGES:
-            print("iterate_act error message: When halting probabilies are above 1.0")
-            print(err.exception)
 
         # Test we do NOT throw when halting probabilities are at 0.0 or 1.0
 
@@ -437,6 +430,7 @@ class test_main_logic(unittest.TestCase):
         controller = ACT_Controller(mock_state)
         new_controller = controller.iterate_act(halting_probabilities)
 
+        print(new_controller)
         self.assertTrue(jnp.all(new_controller.iterations == expected_iterations))
         self.assertTrue(jnp.allclose(new_controller.probabilities, expected_probabilities))
         self.assertTrue(jnp.allclose(new_controller.residuals, expected_residuals))
@@ -633,6 +627,7 @@ class test_jit(unittest.TestCase):
         iterate_act_jit = jax.jit(controller.iterate_act)
         new_controller = iterate_act_jit(halting_probabilities)
 
+        print(new_controller)
         self.assertTrue(jnp.all(new_controller.iterations == expected_iterations))
         self.assertTrue(jnp.allclose(new_controller.probabilities, expected_probabilities))
         self.assertTrue(jnp.allclose(new_controller.residuals, expected_residuals))

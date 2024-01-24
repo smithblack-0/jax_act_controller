@@ -1,16 +1,13 @@
 import jax
-from dataclasses import dataclass
+from jax import numpy as jnp
+from jax.experimental import checkify
 
-@dataclass
-class testclass:
-    boop: int
-    bop: int
+@checkify.checkify
+def to_check(array: jnp.ndarray):
+    probs = array > 1.0
+    checkify.check(~jnp.any(probs), "Test")
 
-
-badpytree = [testclass(1, 2), 1]
-
-def inspector(leaf):
-    print("stopped")
-    print(leaf)
-
-jax.tree_util.tree_map(inspector, badpytree)
+err, output = to_check(jnp.array([0, 2]))
+print(err)
+err, output = to_check(jnp.array([0, 0.1, 0.2]))
+print(err)
