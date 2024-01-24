@@ -11,9 +11,11 @@ from src.jax_act.states import ACTStates
 from src.jax_act.immutable import Immutable
 from src.jax_act import utils
 
+
 import jax.tree_util
 import textwrap
 from jax import numpy as jnp
+from jax.experimental import checkify
 from src.jax_act.types import PyTree
 
 
@@ -237,6 +239,8 @@ class ACT_Controller(Immutable):
         update[name] = item
         new_state = state.replace(updates=update)
         return ACT_Controller(new_state)
+
+    @checkify.checkify
     def iterate_act(self,
                     halting_probabilities: jnp.ndarray
                     )->'ACT_Controller':
@@ -246,8 +250,11 @@ class ACT_Controller(Immutable):
         :param halting_probabilities:
         :return: The act controller with the iteration performed.
         """
+
         if halting_probabilities.shape != self.probabilities.shape:
             raise ValueError("Batch shape and shapes of halting probabilities do not match")
+        checkify.check(jnp.any(halting_probabilities > 1), "Halting probabilities should not be greater than 1")
+        checkify.check(jnp.any(halting_probabilities < 0), "Halting probabilities should not be less than zer")
 
         #if jnp.any(halting_probabilities > 1) | jnp.any(halting_probabilities < 0):
         #    raise ValueError("Halting probabities were not between 0 and 1 inclusive")
