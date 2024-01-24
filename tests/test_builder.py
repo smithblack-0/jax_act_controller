@@ -35,14 +35,15 @@ class test_setter_validation(unittest.TestCase):
         item3 = jnp.zeros([7, 5])
 
         info_message =  "While testing validate shape"
-        # Test we do not throw where shapes are compatible
+        validate_set_shape = checkify.checkify(ControllerBuilder._validate_set_shape)
 
-        err, _ = ControllerBuilder._validate_set_shape(item1, item2, info_message)
+        # Test we do not throw where shapes are compatible
+        err, _ = validate_set_shape(item1, item2, info_message)
         err.throw()
 
         # Test we do when they are not
         with self.assertRaises(checkify.JaxRuntimeError) as err:
-            error, _ = ControllerBuilder._validate_set_shape(item1, item3, info_message)
+            error, _ = validate_set_shape(item1, item3, info_message)
             error.throw()
 
         if SHOW_ERROR_MESSAGES:
@@ -52,7 +53,7 @@ class test_setter_validation(unittest.TestCase):
         # Test we can function when under jit
 
         with self.assertRaises(checkify.JaxRuntimeError) as err:
-            jit_validate= jax.jit(ControllerBuilder._validate_set_shape, static_argnums=[2])
+            jit_validate= jax.jit(validate_set_shape, static_argnums=[2])
             error, _ = jit_validate(item1, item3, info_message)
             error.throw()
 
@@ -180,7 +181,6 @@ class test_setter_validation(unittest.TestCase):
         tensor_bad_dtype = jnp.zeros([3, 2, 5], dtype=jnp.float16)
 
         tree_base = {"item1" : tensor_base, "item2" : tensor_base}
-        tree_bad_type = {"item1" : tensor_base, "item2" : "test"}
         tree_bad_shapes = {"item1" : tensor_bad_shape, "item2" : tensor_bad_shape}
         tree_bad_dtype = {"item1" : tensor_bad_dtype, "item2" : tensor_bad_dtype}
 

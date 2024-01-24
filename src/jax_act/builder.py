@@ -239,7 +239,6 @@ class ControllerBuilder(Immutable):
         return context_message + "\n" + error_message
 
     @staticmethod
-    @checkify.checkify
     def _validate_set_shape(original: jnp.ndarray,
                             new: jnp.ndarray,
                             info: str,
@@ -253,7 +252,6 @@ class ControllerBuilder(Immutable):
         checkify.check(original.shape == new.shape, msg)
 
     @classmethod
-    @checkify.checkify
     def _validate_set_dtype(cls,
                             original: jnp.ndarray,
                             new: jnp.ndarray,
@@ -267,7 +265,6 @@ class ControllerBuilder(Immutable):
         checkify.check(original.dtype == new.dtype, msg)
 
     @classmethod
-    @checkify.checkify
     def _validate_probability(cls,
                               tensor: jnp.ndarray,
                               info: str
@@ -368,7 +365,6 @@ class ControllerBuilder(Immutable):
     # pytrees
 
     @classmethod
-    @checkify.checkify
     def _validate_same_pytree_structure(
             cls,
             original: PyTree,
@@ -393,7 +389,6 @@ class ControllerBuilder(Immutable):
         msg = cls.format_error_message(msg, info)
         checkify.check(state, msg)
     @classmethod
-    @checkify.checkify
     def _validate_pytree_leaves(
         cls,
         original: PyTree,
@@ -418,8 +413,6 @@ class ControllerBuilder(Immutable):
         new_leaves = jax.tree_util.tree_leaves(new)
 
         for i, (original_leaf, new_leaf) in enumerate(zip(original_leaves, new_leaves)):
-
-            location_msg = f"Error on pytree leaf {i} \n"
 
             #Check if leaf has same shape
             msg = f"""
@@ -467,7 +460,7 @@ class ControllerBuilder(Immutable):
         Use one of the 'define' methods to setup the defaults and the accumulators.
         This method only allows replacement of already existing features.
         """
-
+        checkify.check(name)
 
         if name not in self.accumulators:
 
