@@ -14,6 +14,7 @@ import textwrap
 import numpy as np
 import warnings
 from jax import numpy as jnp
+from jax.experimental import checkify
 
 from src.jax_act import utils
 from src.jax_act.states import ACTStates
@@ -40,14 +41,21 @@ class ControllerBuilder(Immutable):
     the programmer by catching boneheaded mistakes that will not become apparent
     until much later
 
-    ---- Warnings ----
+    ---- Error handling and build functions ----
 
-    This class is immutable. Any time you make a change to the builder, a new
-    builder will be returned. You will need to assign it to a variable yourself!
+    Checking for errors in inputs, and returning a clean jit
+    function, are not compatible. In particular, probabilities cannot be
+    properly validated in a jit environment.
 
-    Also, you should never directly call the constructor unless you really know
-    what you are doing. Instead, either new_builder or edit_controller should
-    be utilized.
+    To get around this, we have two build functions and raise errors when building.
+    The two build functions return the exact same results, except one raises errors
+    and one is jit compatible.
+
+    .build: Raises errors, and should be used while debugging. Not jit compatible
+    .build_jit: Does not raise build errors or do valiation. Is jit compatible. Faster.
+
+    If the compiler does not optimize away unused returns I will eat my hat. Then go hit
+    the compiler writers.
 
     ---- Leaves and PyTrees ----
 
@@ -132,6 +140,12 @@ class ControllerBuilder(Immutable):
     define_accumulator_directly: Use to directly define the initial values of an act accumulator
     define_accumulator_by_shape: Use to define an act accumulator by shape and dtype.
     delete_definition: Use to remove an accumulator from the controller.
+    ---- build methods ----
+
+    .build: Raises errors, and should be used while debugging. Not jit compatible
+            When functioning without errors, behaves identically to build_jit
+    .build_jit: Does not raise build errors or do valiation. Is jit compatible.
+                Is a jit function. Faster.
 
     ---- manual methods ----
 
@@ -217,42 +231,60 @@ class ControllerBuilder(Immutable):
     def updates(self)->Dict[str, Optional[PyTree]]:
         return self.state.updates
 
-    # Important setters
+    # Important validation
+    @staticmethod
+    def format_error_message(error_message: str, context_message: str)->str:
+        error_message = textwrap.dedent(error_message)
+        error_message = textwrap.indent(error_message, "   ")
+        return context_message + "\n" + error_message
 
     @staticmethod
+    @checkify.checkify
     def _validate_set_shape(original: jnp.ndarray,
-                            new: jnp.ndarray
-                            ):
-
-        if original.shape != new.shape:
-            msg = f"""
-            The original tensor had shape {original.shape}.
-            The proposed new tensor has shape {new.shape}. These did not match.
-            """
-            msg = textwrap.dedent(msg)
-            raise ValueError(msg)
-
-    @staticmethod
-    def _validate_set_dtype(original: jnp.ndarray,
                             new: jnp.ndarray,
+                            info: str,
                             ):
 
-        if original.dtype != new.dtype:
-            msg = f"""
-            Originally, the tensor had dtype {original.dtype}.
-            However, the proposed replacement has dtype {new.dtype}
-            """
-            msg = textwrap.dedent(msg)
-            raise TypeError(msg)
+        msg = f"""
+        The original tensor had shape {original.shape}.
+        The proposed new tensor has shape {new.shape}. These did not match.
+        """
+        msg = info + msg
+        checkify.check(original.shape == new.shape, msg)
 
-    @staticmethod
-    def _validate_probability(tensor: jnp.ndarray):
-        if jnp.any(tensor < 0.0):
-            msg = "A tensor representing probabilities had elements less than zero"
-            raise ValueError(msg)
-        if jnp.any(tensor > 1.0):
-            msg = "A tensor representing probabilities had elmenents greater than one"
-            raise ValueError(msg)
+    @classmethod
+    @checkify.checkify
+    def _validate_set_dtype(cls,
+                            original: jnp.ndarray,
+                            new: jnp.ndarray,
+                            info: str,
+                            ):
+        msg = f"""
+        Originally, the tensor had dtype {original.dtype}.
+        However, the proposed replacement has dtype {new.dtype}
+        """
+        msg = cls.format_error_message(msg, info)
+        checkify.check(original.dtype == new.dtype, msg)
+
+    @classmethod
+    @checkify.checkify
+    def _validate_probability(cls,
+                              tensor: jnp.ndarray,
+                              info: str
+                              ):
+        # Check low
+        msg = """
+        A tensor representing probabilities had elements less than zero
+        """
+        msg = cls.format_error_message(msg, info)
+        checkify.check(~jnp.any(tensor < 0), msg)
+
+        # Check high
+        msg = """
+        A tensor representing probabilities had elements greater than one
+        """
+        msg = cls.format_error_message(msg, info)
+        checkify.check(~jnp.any(tensor > 1.0), msg)
     def set_probabilities(self, values: jnp.ndarray)->'ControllerBuilder':
         """
         Sets the values of probabilities to something new
@@ -335,10 +367,13 @@ class ControllerBuilder(Immutable):
     # We need some more helper methods to validate
     # pytrees
 
-    @staticmethod
+    @classmethod
+    @checkify.checkify
     def _validate_same_pytree_structure(
+            cls,
             original: PyTree,
             new: PyTree,
+            info: str,
             ):
         """
         Validates that the pytree structure is the same between original
@@ -347,21 +382,23 @@ class ControllerBuilder(Immutable):
 
         :param original: The original pytree feature
         :param new: The new pytree feature
+        :param info: The error context to include
         :raises: ValueError, if the tree structures are different
         """
-        if not utils.are_pytree_structure_equal(original, new):
-            msg = f"""
-            The original tensor collection or tensor does not have the 
-            same tree structure as the new tensor collection or tensor.
-            """
-            msg = textwrap.dedent(msg)
-            raise ValueError(msg)
-
+        state = utils.are_pytree_structure_equal(original, new)
+        msg = f"""
+        The original tensor collection or tensor does not have the 
+        same tree structure as the new tensor collection or tensor.
+        """
+        msg = cls.format_error_message(msg, info)
+        checkify.check(state, msg)
     @classmethod
+    @checkify.checkify
     def _validate_pytree_leaves(
         cls,
         original: PyTree,
         new: PyTree,
+        info: str,
         ):
         """
         Validates that pytree leaves are compatible. The function first
@@ -377,43 +414,37 @@ class ControllerBuilder(Immutable):
         :raises: ValueError, if the leaf dtypes are different
         """
 
-        def check_function(original_leaf: Any,
-                           new_leaf: Any
-                           ):
+        original_leaves = jax.tree_util.tree_leaves(original)
+        new_leaves = jax.tree_util.tree_leaves(new)
+
+        for i, (original_leaf, new_leaf) in enumerate(zip(original_leaves, new_leaves)):
+
+            location_msg = f"Error on pytree leaf {i} \n"
+
+            #Check if leaf has same shape
+            msg = f"""
+            An issue occured in leaf {i}
+            
+            The original shape was {original_leaf.shape}.
+            However, the update has shape {new_leaf.shape}
+            
+            These do not match.
             """
-            A check function that inspects two leafs and
-            considers whether or not the new leaf
-            is a compatible replacement of the original.
+            msg = cls.format_error_message(msg, info)
+            checkify.check(original_leaf.shape == new_leaf.shape, msg)
 
-            :param original_leaf: The original pytree leaf
-            :param new_leaf: The new pytree leaf.
-            :raises: ValueError, if the leaf types are different
-            :raises: ValueError, if the leaves are tensors with different shapes
-            :raises: ValueError, if the leaves are tensors with different dtypes
+            #Check if leaf has same dtype
+
+            msg = f"""
+            An issue occurred in leaf {i}
+            
+            The original dtype was {original_leaf.dtype}.
+            However, the new leaf had dtype {new_leaf.dtype}
+            
+            These differences are not allowed.
             """
-            if not isinstance(new_leaf, (np.ndarray, jnp.ndarray)):
-                msg = """
-                The type of a tensor in the tensor collection is not a jax
-                or np ndarray. This is not allowed. 
-                """
-                msg = textwrap.dedent(msg)
-                raise TypeError(msg)
-            try:
-                cls._validate_set_shape(original_leaf, new_leaf)
-                cls._validate_set_dtype(original_leaf, new_leaf)
-            except ValueError as err:
-                msg = "An issue occurred on tensor shapes while validating a tensor or tensor collection:  \n"
-                msg = msg + str(err)
-                msg = textwrap.dedent(msg)
-                raise ValueError(msg) from err
-            except TypeError as err:
-                msg = "An issue occurred on tensor dtypes while validating a tensor or tensor collection:  \n"
-                msg = textwrap.dedent(msg)
-                msg = msg + str(err)
-                raise TypeError(msg) from err
-
-        utils.merge_pytrees(check_function, original, new)
-
+            msg = cls.format_error_message(msg, info)
+            checkify.check(original_leaf.dtype == new_leaf.dtype, msg)
     def set_accumulator(self, name: str, value: PyTree)->'ControllerBuilder':
         """
         Sets an accumulator to be filled with a particular series of values.
@@ -428,13 +459,18 @@ class ControllerBuilder(Immutable):
         :raises: KeyError, if you are trying to set to an accumulator that was never defined.
         :raises: ValueError, if your pytree is not compatible.
         """
+
+        # Check if the accumulator was ever setup
+        msg = f"""
+        Accumulator of name '{name}' was never setup using a define statement.
+
+        Use one of the 'define' methods to setup the defaults and the accumulators.
+        This method only allows replacement of already existing features.
+        """
+
+
         if name not in self.accumulators:
-            msg = f"""
-            Accumulator of name '{name}' was never setup using a define statement.
-            
-            Use one of the 'define' methods to setup the defaults and the accumulators.
-            This method only allows replacement of already existing features.
-            """
+
             msg = textwrap.dedent(msg)
             raise KeyError(msg)
 
@@ -905,12 +941,13 @@ class ControllerBuilder(Immutable):
 
     def build(self)->ACT_Controller:
         """
-        Build the act controller
+        Build the act controller.
         :return: An ACT Controller instance.
         """
         return ACT_Controller(self.state)
     def __init__(self,
-                 state: ACTStates
+                 state: ACTStates,
+                 validate_errors: bool = False
                  ):
         """
         Do not use this class to get your initial act builder.

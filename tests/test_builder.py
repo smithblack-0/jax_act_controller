@@ -8,6 +8,7 @@ import warnings
 import jax
 
 from jax import numpy as jnp
+from jax.experimental import checkify
 from src.jax_act.builder import ControllerBuilder
 from src.jax_act.states import ACTStates
 from src.jax_act import utils
@@ -27,39 +28,122 @@ def make_empty_state_mockup() -> ACTStates:
     )
 
 class test_setter_validation(unittest.TestCase):
+    """ Test that the validation functions operate properly"""
     def test_validate_set_shape(self):
         item1 = jnp.zeros([10, 5])
         item2 = jnp.ones([10, 5])
         item3 = jnp.zeros([7, 5])
 
+        info_message =  "While testing validate shape"
         # Test we do not throw where shapes are compatible
 
-        ControllerBuilder._validate_set_shape(item1, item2)
+        err, _ = ControllerBuilder._validate_set_shape(item1, item2, info_message)
+        err.throw()
 
         # Test we do when they are not
+        with self.assertRaises(checkify.JaxRuntimeError) as err:
+            error, _ = ControllerBuilder._validate_set_shape(item1, item3, info_message)
+            error.throw()
 
-        with self.assertRaises(ValueError) as err:
-            ControllerBuilder._validate_set_shape(item1, item3)
+        if SHOW_ERROR_MESSAGES:
+            print(err.exception)
+
+
+        # Test we can function when under jit
+
+        with self.assertRaises(checkify.JaxRuntimeError) as err:
+            jit_validate= jax.jit(ControllerBuilder._validate_set_shape, static_argnums=[2])
+            error, _ = jit_validate(item1, item3, info_message)
+            error.throw()
 
         if SHOW_ERROR_MESSAGES:
             print(err.exception)
 
     def test_validate_dtype(self):
+        """ Test that validate dtype functions correctly"""
         item1 = jnp.zeros([10, 5], dtype=jnp.float32)
         item2 = jnp.ones([10, 5], dtype=jnp.float16)
 
+        info_msg = "While testing validate dtype"
         # Test we do not throw with compatible dtypes
 
-        ControllerBuilder._validate_set_dtype(item1, item1)
-
+        err, _ = ControllerBuilder._validate_set_dtype(item1, item1, info_msg)
+        err.throw()
         # Test we do throw when required
 
-        with self.assertRaises(TypeError) as err:
-            ControllerBuilder._validate_set_dtype(item1, item2)
+        with self.assertRaises(checkify.JaxRuntimeError) as err:
+            error, _ = ControllerBuilder._validate_set_dtype(item1, item2, info_msg)
+            error.throw()
 
         if SHOW_ERROR_MESSAGES:
             print(err.exception)
 
+        # Test we can throw under jit conditions
+
+        with self.assertRaises(checkify.JaxRuntimeError) as err:
+            jit_validate = jax.jit(ControllerBuilder._validate_set_dtype, static_argnums=[2])
+            error, _ = jit_validate(item1, item2, info_msg)
+            error.throw()
+
+        if SHOW_ERROR_MESSAGES:
+            print(err.exception)
+
+    def test_validate_probabilities(self):
+        """ Test that probability validation is good"""
+
+        info_msg = "While testing validate probabilities"
+
+        # Test that no throw happens when good
+        valid_probabilities = jnp.array([0.0, 1.0, 0.3])
+        err, _ = ControllerBuilder._validate_probability(valid_probabilities, info_msg)
+        err.throw()
+
+        # Test we do throw when probabilities are too low
+
+        invalid_probabilities = jnp.array([-0.1, 0.3, 0.4])
+        with self.assertRaises(checkify.JaxRuntimeError) as err:
+            error, _ = ControllerBuilder._validate_probability(invalid_probabilities, info_msg)
+            error.throw()
+
+        if SHOW_ERROR_MESSAGES:
+            print("Testing validate_probabilities: When probability too low")
+            print(err.exception)
+
+        # Test we do throw when probabilities are too high
+
+        invalid_probabilities = jnp.array([1.3, 0.3, 0.4])
+        with self.assertRaises(checkify.JaxRuntimeError) as err:
+            error, _ = ControllerBuilder._validate_probability(invalid_probabilities, info_msg)
+            error.throw()
+
+        if SHOW_ERROR_MESSAGES:
+            print("Testing validate_probabilities: When probability too low")
+            print(err.exception)
+
+        info_msg = "While testing validate probabilities under jit"
+
+        # Test we do throw when probabilities are too low under jit
+
+        invalid_probabilities = jnp.array([-0.1, 0.3, 0.4])
+        with self.assertRaises(checkify.JaxRuntimeError) as err:
+            jit_validation = jax.jit(ControllerBuilder._validate_probability, static_argnums=[1])
+            error, _ = jit_validation(invalid_probabilities, info_msg)
+            error.throw()
+        if SHOW_ERROR_MESSAGES:
+            print("Testing validate_probabilities: When probability too low under jit")
+            print(err.exception)
+        # Test we do throw when probabilities are too high
+
+        invalid_probabilities = jnp.array([1.3, 0.3, 0.4])
+        with self.assertRaises(checkify.JaxRuntimeError) as err:
+            jit_validation = jax.jit(ControllerBuilder._validate_probability, static_argnums=[1])
+            error, _ = jit_validation(invalid_probabilities, info_msg)
+            error.throw()
+
+        if SHOW_ERROR_MESSAGES:
+            print("Testing validate_probabilities: When probability too low")
+            print(err.exception)
+        info_msg = "While testing validate probabilities under jit"
     def test_validate_pytree_structure(self):
         """ This checks if pytrees have the same tree structure"""
 
@@ -67,12 +151,24 @@ class test_setter_validation(unittest.TestCase):
         item2 = {"item" : None, "baby" : None}
         item3 = {"item" : None}
 
+        info_msg = "While testing validate pytree structure"
         # Check no throw when compatible
-        ControllerBuilder._validate_same_pytree_structure(item1, item3)
+        err, _ = ControllerBuilder._validate_same_pytree_structure(item1, item3, info_msg)
+        err.throw()
 
         # Check throw when incompatible
-        with self.assertRaises(ValueError) as err:
-            ControllerBuilder._validate_same_pytree_structure(item1, item2)
+        with self.assertRaises(checkify.JaxRuntimeError) as err:
+            error, _ = ControllerBuilder._validate_same_pytree_structure(item1, item2, info_msg)
+            error.throw()
+        if SHOW_ERROR_MESSAGES:
+            print(err.exception)
+
+        # Check jit compatible
+        with self.assertRaises(checkify.JaxRuntimeError) as err:
+            jit_validation = jax.jit(ControllerBuilder._validate_same_pytree_structure,
+                                     static_argnums=[2])
+            error, _ = jit_validation(item1, item2, info_msg)
+            error.throw()
         if SHOW_ERROR_MESSAGES:
             print(err.exception)
 
@@ -88,21 +184,17 @@ class test_setter_validation(unittest.TestCase):
         tree_bad_shapes = {"item1" : tensor_bad_shape, "item2" : tensor_bad_shape}
         tree_bad_dtype = {"item1" : tensor_bad_dtype, "item2" : tensor_bad_dtype}
 
+        info_msg = "Testing validate pytree leaves"
+
         # Test we do not throw when compatible
-        ControllerBuilder._validate_pytree_leaves(tree_base, tree_base)
-
-        # Test we throw with bad type
-        with self.assertRaises(TypeError) as err:
-            ControllerBuilder._validate_pytree_leaves(tree_base, tree_bad_type)
-
-        if SHOW_ERROR_MESSAGES:
-            print("testing validate_pytree_leaves: When type is bad")
-            print(err.exception)
+        err, _ = ControllerBuilder._validate_pytree_leaves(tree_base, tree_base, info_msg)
+        err.throw()
 
         # test we throw with a bad shape
 
-        with self.assertRaises(ValueError) as err:
-            ControllerBuilder._validate_pytree_leaves(tree_base, tree_bad_shapes)
+        with self.assertRaises(checkify.JaxRuntimeError) as err:
+            error, _ = ControllerBuilder._validate_pytree_leaves(tree_base, tree_bad_shapes, info_msg)
+            error.throw()
 
         if SHOW_ERROR_MESSAGES:
             print("testing validate_pytree_leaves: When shape is bad")
@@ -110,13 +202,35 @@ class test_setter_validation(unittest.TestCase):
 
         # test we throw on bad dtype
 
-        with self.assertRaises(TypeError) as err:
-            ControllerBuilder._validate_pytree_leaves(tree_base, tree_bad_dtype)
+        with self.assertRaises(checkify.JaxRuntimeError) as err:
+            error, _ = ControllerBuilder._validate_pytree_leaves(tree_base, tree_bad_dtype ,info_msg)
+            error.throw()
 
         if SHOW_ERROR_MESSAGES:
             print("testing validate_pytree_leaves: When dtype is bad")
             print(err.exception)
 
+        # test we throw with a bad shape on jit
+
+        with self.assertRaises(checkify.JaxRuntimeError) as err:
+            validation_jit = jax.jit(ControllerBuilder._validate_pytree_leaves, static_argnums=[2])
+            error, _ = validation_jit(tree_base, tree_bad_shapes, info_msg)
+            error.throw()
+
+        if SHOW_ERROR_MESSAGES:
+            print("testing validate_pytree_leaves: When shape is bad jit")
+            print(err.exception)
+
+        # test we throw on bad dtype on jit
+
+        with self.assertRaises(checkify.JaxRuntimeError) as err:
+            validation_jit = jax.jit(ControllerBuilder._validate_pytree_leaves, static_argnums=[2])
+            error, _ = validation_jit(tree_base, tree_bad_dtype, info_msg)
+            error.throw()
+
+        if SHOW_ERROR_MESSAGES:
+            print("testing validate_pytree_leaves: When dtype is bad jit")
+            print(err.exception)
 
     def test_validate_definition_pytree(self):
         """ Test if _validate_definition_pytree throws errors appropriately """
@@ -586,6 +700,7 @@ class test_setters(unittest.TestCase):
             print("Testing set_updates: Incompatible update value")
             print(err.exception)
             print(err.exception.__cause__)
+
 
 class test_jittable(unittest.TestCase):
     """

@@ -67,7 +67,17 @@ class ACTStates:
     updates: Dict[str, Optional[PyTree]]
 
 
-# We define the functions to represent ACTStates as a pytree,
+
+
+@dataclass
+class BuilderState:
+    """
+    State functions used for the builder
+    mechanism.
+    """
+
+
+# We define the functions to represent states as a pytree,
 # and then register the tree.
 #
 # This involves manually pulling out and then flattening
@@ -84,6 +94,7 @@ def state_flatten(state: ACTStates) -> Tuple[Any, Any]:
         aux_out.append(aux)
         values.append(value)
     return zip(state.keys(), values), aux_out
+
 def state_unflatten(aux_data: Any, flat_state: Any) -> ACTStates:
 
     values = []
@@ -93,4 +104,3 @@ def state_unflatten(aux_data: Any, flat_state: Any) -> ACTStates:
     return ACTStates(*values)
 
 jax.tree_util.register_pytree_with_keys(ACTStates, state_flatten, state_unflatten)
-

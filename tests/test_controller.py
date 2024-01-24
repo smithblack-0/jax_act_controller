@@ -135,6 +135,8 @@ class test_private_helpers(unittest.TestCase):
         """ Test that probabilities are validated as expected"""
 
         # Test we raise when too high
+
+
         with self.assertRaises(jax._src.checkify.JaxRuntimeError):
             err, _ = ACT_Controller.validate_probability(jnp.array([0, 3.0]))
             err.throw()
