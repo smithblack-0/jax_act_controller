@@ -14,6 +14,7 @@ import textwrap
 import numpy as np
 import warnings
 from jax import numpy as jnp
+from jax.experimental import checkify
 
 from src.jax_act import utils
 from src.jax_act.states import ACTStates
@@ -199,14 +200,6 @@ class ControllerBuilder(Immutable):
     def updates(self)->Dict[str, Optional[PyTree]]:
         return self.state.updates
 
-    # Define class validation
-
-    @staticmethod
-    def format_error_message(message: str, context: str)->str:
-        message = textwrap.dedent(message)
-        message = textwrap.indent(message, "    ")
-        return context + "\n" + message
-
     # Main definition methods.
     #
     # We can actually define the features we wish to accumulate using
@@ -230,79 +223,49 @@ class ControllerBuilder(Immutable):
         :raises: ValueError, if leaves in the pytree do not batch the batch shape.
         :raises: ValueError, if leaf in the pytree does not have enough dimensions to handle batch dims.
         """
+        leaves = jax.tree_util.tree_leaves(pytree)
+        for i, leaf in enumerate(leaves):
 
-
-
-        def validate_tensor_type(leaf: Any):
-            if not isinstance(leaf, (jnp.ndarray, np.ndarray)):
-                msg = f"""
-                Attempt to define an accumulator failed. 
-                
-                The type of one of the leaves of the provided 
-                pytree was not a known tensor
-                
-                only jax and numpy tensors are supported
-                """
-                msg = textwrap.dedent(msg)
-                raise TypeError(msg)
-        def validate_tensor_floating(leaf: jnp.ndarray):
+            # Check that the dtype is floating
+            # Values that are not floating cannot be weighted and added.
             if not jnp.issubdtype(leaf, jnp.floating):
-                msg = """
-                Attempt to define an accumulator failed
-                
-                The type of the provided tensor was not floating.
-                
-                This will mean that multiplying by the halting probabilities
-                and adding may not work. As a result, it is disallowed. 
-                
-                Fix this by converting to a floating dtype first.
+                msg =f"""
+                A dtype issue occurred. It was expected that the dtype would be floating for
+                all entries. However, leaf {i} was in fact of dtype {leaf.dtype}
                 """
-                msg = textwrap.dedent(msg)
+                msg = utils.format_error_message(msg, context)
                 raise TypeError(msg)
-        def validate_tensor_batch_shape(leaf: jnp.ndarray):
+
+            # Validate the batch length is satisfied
             batch_shape = self.probabilities.shape
             batch_dim_length = len(batch_shape)
 
             if batch_dim_length > len(leaf.shape):
                 msg = f"""
-                Attempt to define an accumulator failed.
+                A dimensions issue occurred. It was expected any defined tensors
+                will have a number of dimensions at least of number {batch_dim_length}. 
+                This is because that is the number of batch dimensions.
                 
-                At least one of the leaves had a tensor with 
-                number of dimensions less than the batch shape. The
-                failing tensor had shape '{leaf.shape}'
-                
-                Make sure to place batch dimensions at the beginning
-                of your tensors
+                However, leaf '{i}' actually had a number of dimensions equal to {len(leaf.shape)}
                 """
-                msg = textwrap.dedent(msg)
+                msg = utils.format_error_message(msg, context)
                 raise ValueError(msg)
 
+            #Validate the batch shape
             tensor_shape = leaf.shape[:batch_dim_length]
             if tensor_shape != batch_shape:
                 msg = f"""
-                Attempt to define an accumulator failed
-                
-                One of the leaves during traversal had 
-                batch dimensions '{tensor_shape}'.
-                
-                These do not match the defined batch
-                shape of '{batch_shape}'
+                A shape issue occurred. It was expected that the provided
+                pytree would have had batch shape {batch_shape}. However,
+                leaf '{i}' had shape {tensor_shape}
                 """
-                msg = textwrap.dedent(msg)
+                msg = utils.format_error_message(msg, context)
                 raise ValueError(msg)
-        def validate_leaf(leaf):
-
-
-            validate_tensor_type(leaf)
-            validate_tensor_floating(leaf)
-            validate_tensor_batch_shape(leaf)
-
-        jax.tree_util.tree_map(validate_leaf, pytree)
-
 
     def _define(self,
                 name: str,
                 definition: PyTree,
+                context: str
                 )->'ControllerBuilder':
         """
         A helper method. Attempts to define an
@@ -311,10 +274,11 @@ class ControllerBuilder(Immutable):
 
         :param name: The name to set
         :param definition: What to set it to
+        :param context: Any additional context to throw into error messages.
         :return: A new ControllerBuilder
         """
 
-        self._validate_definition_pytree(definition)
+        self._validate_definition_pytree(definition, context)
 
         defaults = self.defaults.copy()
         accumulators = self.accumulators.copy()
@@ -384,17 +348,8 @@ class ControllerBuilder(Immutable):
         :raises: ValueError, if the definition is flawed.
         """
 
-        if name in self.defaults:
-            warnings.warn("Accumulator and defaults are being overwritten")
-        try:
-            new_builder = self._define(name, definition)
-        except Exception as err:
-            msg = f""" 
-            An issue occurred while trying to define an accumulator
-            named '{name}'
-            """
-            msg = textwrap.dedent(msg)
-            raise err.__class__(msg) from err
+        context_err_msg = "An issue occurred while defining an accumulator directly"
+        new_builder = self._define(name, definition, context_err_msg)
         return new_builder
 
     def define_accumulator_by_shape(self,
@@ -441,24 +396,29 @@ class ControllerBuilder(Immutable):
         if name in self.defaults:
             warnings.warn("Accumulator and defaults are being overwritten")
 
+        ### DEFINE HELPER FUNCTION ####
         def is_leaf(node: Any)->bool:
-            # Test to find out if a
-            # node is a leaf
-            #
-            # Our leaves should be lists of ints, but
-            # we also need to traverse lists like normal.
-            #
-            # As a result, when we see a list, we look ahead
-            # to find out if it is filled with ints, and
-            # return true in those cases.
-
-            contains_integers = False
+            # A node is a leaf if it is
+            #  * A list
+            #  * Filled with only integers
             if isinstance(node, list):
                 for item in node:
                     if not isinstance(item, int):
                         return False
                 return True
             return False
+
+        leaves, tree_def = jax.tree_util.tree_flatten_with_path(shapes)
+        for i, (path, leaf) in enumerate(leaves):
+
+            # A corrupt pytree is actually somewhat difficult to detect
+            # and signal about. Because of library limitations, we will only
+            # KNOW it is corrupt
+            if not is_leaf(leaf):
+
+
+
+
         def make_tensor(leaf: List[int])->jnp.ndarray:
              # Convert a list of ints into a tensor
              # of the same shape
