@@ -1,11 +1,25 @@
 from typing import Callable, Any
 
 import jax
+import textwrap
 import numpy as np
+
 from jax import numpy as jnp
 
 from src.jax_act.types import PyTree
 
+def format_error_message(message: str, context: str)->str:
+    """
+    Formats an error message to look nice, with context
+    placed first, and then the message shown at an indent.
+
+    :param message: The message to display
+    :param context: The context for the message
+    :return: A string representing the message
+    """
+    message = textwrap.dedent(message)
+    message = textwrap.indent(message, "    ")
+    return context + "\n" + message
 
 def setup_left_broadcast(tensor: jnp.ndarray,
                           target: jnp.ndarray
