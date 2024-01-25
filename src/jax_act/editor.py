@@ -1,4 +1,9 @@
 """
+Tools allowing for the
+manual editing of an existing ACT session
+"""
+
+"""
 Creation contains the builders and other mechanisms
 needed to create an ACT instance. It also includes
 some degree of error checking.
@@ -14,6 +19,7 @@ import textwrap
 import numpy as np
 import warnings
 from jax import numpy as jnp
+from jax.experimental import checkify
 
 from src.jax_act import utils
 from src.jax_act.states import ACTStates
@@ -22,32 +28,31 @@ from src.jax_act.immutable import Immutable
 from src.jax_act.controller import ACT_Controller
 
 
-class ControllerBuilder(Immutable):
+class Editor(Immutable):
     """
-    A Builder class designed to setup a ACT controller, or
-    edit an existing one. It has a heavy dose of sanity checking to prevent
-    boneheaded mistakes which may not be immediately obvious.
+    This class exists to allow the editing of a currently
+    existing ACT session's underlying tensors.
 
-    This is, as most features operating under jax must be, an immutable class.
-    When you update your builder, a new builder will be returned to you. You,
-    the programmer, must store that builder yourself. This is to ensure compatibility
-    with jax.
+    I
 
     ---- Purpose ----
 
-    This class's purpose is to allow the definition and manipulation of
-    the states underlying an ACT controller. It is also designed to also support
+    This class's purpose is to allow the manipulation of
+    the states underlying an ACT controller. It is also designed to support
     the programmer by catching boneheaded mistakes that will not become apparent
     until much later
 
-    ---- Warnings ----
+    ---- Error handling and build functions ----
 
-    This class is immutable. Any time you make a change to the builder, a new
-    builder will be returned. You will need to assign it to a variable yourself!
+    Checking for errors in input, and jit compilation, turn out not to be
+    compatible.
 
-    Also, you should never directly call the constructor unless you really know
-    what you are doing. Instead, either new_builder or edit_controller should
-    be utilized.
+    To get around this, we have two build functions and raise errors when building.
+    The two build functions return the exact same results, except one raises errors
+    and one is jit compatible.
+
+    .build: Raises errors, and should be used while debugging. Not jit compatible
+    .build_jit: Does not raise build errors or do valiation. Is jit compatible. Faster.
 
     ---- Leaves and PyTrees ----
 
@@ -62,29 +67,22 @@ class ControllerBuilder(Immutable):
     PyTree is the problem, but will need to hunt down the leaf in it
     manually.
 
-    ---- How to Use: Controller Creation ----
+    ---- How to use: Controller Editing ----
 
-    If you want to create a controller in the first place, you will be wanting
-    to use the new_builder method. Define the shape of the batch, or shape
-    of the tensors, and the dtype of the probabilities. Your controller is
-    returned, and is explicitly bound to the provided batch shape.
+    If you have an existing act process, and you want to edit it, you
+    are allowed to do so. The class supports this.
 
-    Now, you need to setup the features you wish to accumulate. Usually, they
-    are simply tensors, but if you want you can accumulate PyTrees. See jax
-    pytrees for definition of that.
 
-    Use one of the various 'define_...' methods to define the name, shapes,
-    and default values for your accumulators.
 
-    Once you are ready, call .build() to create a controller. Off you go!
+    You can now do four things
 
-    Generally, you can use this in one of a few ways.
+    * Replace a tensor using one of the set_ methods with another tensor of same shape or dtype
+    * Overwrite an existing accumulator with a new one using a define_ method.
+    * Define a new accumulator using a define_ method
+    * Delete an existing accumulator using the delete_definition method.
 
-    First, and most importantly, do NOT use the constructor directly. You
-    should always use either the new_builder method or the edit_controller
-    You can use the builder to setup a act controller in the first
-    place. You start
-
+    Editing the shape of the batch, however useful, is strictly forbidden for reasons
+    of jax jit compatibility.
 
     ---- properties ----
 
@@ -102,8 +100,8 @@ class ControllerBuilder(Immutable):
     or editing.
 
     new_builder: Creates your first builder instance to work with
-    redefine_controller: Creates a builder from the existing controller state
-    redefine_save: Creates a builder from any .save state produced by a class
+    edit_controller: Creates a builder from the existing controller state
+    edit_save: Creates a builder from any .save state produced by a class
                 from act objects.
 
     ---- configuration methods ---
@@ -114,6 +112,12 @@ class ControllerBuilder(Immutable):
     define_accumulator_directly: Use to directly define the initial values of an act accumulator
     define_accumulator_by_shape: Use to define an act accumulator by shape and dtype.
     delete_definition: Use to remove an accumulator from the controller.
+    ---- build methods ----
+
+    .build: Raises errors, and should be used while debugging. Not jit compatible
+            When functioning without errors, behaves identically to build_jit
+    .build_jit: Does not raise build errors or do valiation. Is jit compatible.
+                Is a jit function. Faster.
 
     ---- manual methods ----
 
@@ -199,13 +203,356 @@ class ControllerBuilder(Immutable):
     def updates(self)->Dict[str, Optional[PyTree]]:
         return self.state.updates
 
-    # Define class validation
+    # Important validation
+    @staticmethod
+    def format_error_message(error_message: str, context_message: str)->str:
+        error_message = textwrap.dedent(error_message)
+        error_message = textwrap.indent(error_message, "   ")
+        return context_message + "\n" + error_message
 
     @staticmethod
-    def format_error_message(message: str, context: str)->str:
-        message = textwrap.dedent(message)
-        message = textwrap.indent(message, "    ")
-        return context + "\n" + message
+    @checkify.checkify
+    def _validate_set_shape(original: jnp.ndarray,
+                            new: jnp.ndarray,
+                            info: str,
+                            ):
+
+        msg = f"""
+        The original tensor had shape {original.shape}.
+        The proposed new tensor has shape {new.shape}. These did not match.
+        """
+        msg = info + msg
+        checkify.check(original.shape == new.shape, msg)
+
+    @classmethod
+    @checkify.checkify
+    def _validate_set_dtype(cls,
+                            original: jnp.ndarray,
+                            new: jnp.ndarray,
+                            info: str,
+                            ):
+        msg = f"""
+        Originally, the tensor had dtype {original.dtype}.
+        However, the proposed replacement has dtype {new.dtype}
+        """
+        msg = cls.format_error_message(msg, info)
+        checkify.check(original.dtype == new.dtype, msg)
+
+    @classmethod
+    @checkify.checkify
+    def _validate_probability(cls,
+                              tensor: jnp.ndarray,
+                              info: str
+                              ):
+        # Check low
+        msg = """
+        A tensor representing probabilities had elements less than zero
+        """
+        msg = cls.format_error_message(msg, info)
+        checkify.check(~jnp.any(tensor < 0), msg)
+
+        # Check high
+        msg = """
+        A tensor representing probabilities had elements greater than one
+        """
+        msg = cls.format_error_message(msg, info)
+        checkify.check(~jnp.any(tensor > 1.0), msg)
+    def set_probabilities(self, values: jnp.ndarray)->'ControllerBuilder':
+        """
+        Sets the values of probabilities to something new
+        :param values: Values to set
+        :return: A new ControllerBuilder with updates applied
+        :raises: ValueError, if original and new probability shapes do not match
+        :raises: TypeError, if new and original probability types do not match.
+        """
+        try:
+            self._validate_set_shape(self.probabilities, values)
+            self._validate_set_dtype(self.probabilities, values)
+            self._validate_probability(values)
+        except Exception as err:
+            msg = """
+            This error occurred while setting the probabilities field
+            """
+            msg = textwrap.dedent(msg)
+            raise ValueError(msg) from err
+
+        state = self.state.replace(probabilities=values)
+        return ControllerBuilder(state)
+
+    def set_residuals(self, values: jnp.ndarray)->'ControllerBuilder':
+        """
+        Sets the residuals to be equal to particular
+        values, and returns a new builder.
+
+        :param values: The values to set the residuals to
+        :return: A new ControllerBuilder, with the residuals set
+        :raises: ValueError, if the new and original residual shape are not the same
+        :raises: TypeError, if the new and original residual do not have the same dtye.
+        """
+        try:
+            self._validate_set_shape(self.residuals, values)
+            self._validate_set_dtype(self.residuals, values)
+            self._validate_probability(values)
+        except Exception as err:
+            msg = "An issue occurred while setting residuals"
+            raise ValueError(msg) from err
+
+        state = self.state.replace(residuals=values)
+        return ControllerBuilder(state)
+
+    def set_iterations(self, values: jnp.ndarray)->'ControllerBuilder':
+        """
+        Sets the iteration channel to something new.
+        :param values: The iterations tensor to set it to
+        :return: The new controller builder
+        :raises: If the new and original shape differ
+        :raises: If the dtype is not int32
+        """
+        try:
+            self._validate_set_shape(self.iterations, values)
+            self._validate_set_dtype(self.iterations, values)
+        except Exception as err:
+            msg = "An issue occurred while setting the iterations counters"
+            raise ValueError(msg) from err
+
+        state = self.state.replace(iterations=values)
+        return ControllerBuilder(state)
+
+    def set_epsilon(self, epsilon: float)->"ControllerBuilder":
+        """
+        Sets the epsilon to be a new value.
+
+        :param epsilon: The epsilon to set
+        :return: The new controller builder
+        :raises: ValueError, if epsilon is not a float
+        :raises: ValueError, if epsilon was not between 0-1.
+        """
+
+        if not isinstance(epsilon, float):
+            raise ValueError("Epsilon was not a float")
+        if (epsilon > 1.0) | (epsilon < 0.0):
+            raise ValueError("Epsilon was not between 0 and 1")
+
+        state = self.state.replace(epsilon = epsilon)
+        return ControllerBuilder(state)
+
+    # We need some more helper methods to validate
+    # pytrees
+
+    @classmethod
+    @checkify.checkify
+    def _validate_same_pytree_structure(
+            cls,
+            original: PyTree,
+            new: PyTree,
+            info: str,
+            ):
+        """
+        Validates that the pytree structure is the same between original
+        and new. Raises if not, and uses name parameters to make the
+        messages informative.
+
+        :param original: The original pytree feature
+        :param new: The new pytree feature
+        :param info: The error context to include
+        :raises: ValueError, if the tree structures are different
+        """
+        state = utils.are_pytree_structure_equal(original, new)
+        msg = f"""
+        The original tensor collection or tensor does not have the 
+        same tree structure as the new tensor collection or tensor.
+        """
+        msg = cls.format_error_message(msg, info)
+        checkify.check(state, msg)
+    @classmethod
+    @checkify.checkify
+    def _validate_pytree_leaves(
+        cls,
+        original: PyTree,
+        new: PyTree,
+        info: str,
+        ):
+        """
+        Validates that pytree leaves are compatible. The function first
+        checks that the original and new pytree leaves are the same types.
+
+        If the types are of tensor type, it also checks that the shape and
+        dtypes are the same.
+
+        :param original: The original pytree to test
+        :param new: The new pytree to test.
+        :raises: ValueError, if the leaf types are different
+        :raises: ValueError, if the leaf shapes are different
+        :raises: ValueError, if the leaf dtypes are different
+        """
+
+        original_leaves = jax.tree_util.tree_leaves(original)
+        new_leaves = jax.tree_util.tree_leaves(new)
+
+        for i, (original_leaf, new_leaf) in enumerate(zip(original_leaves, new_leaves)):
+
+            location_msg = f"Error on pytree leaf {i} \n"
+
+            #Check if leaf has same shape
+            msg = f"""
+            An issue occured in leaf {i}
+            
+            The original shape was {original_leaf.shape}.
+            However, the update has shape {new_leaf.shape}
+            
+            These do not match.
+            """
+            msg = cls.format_error_message(msg, info)
+            checkify.check(original_leaf.shape == new_leaf.shape, msg)
+
+            #Check if leaf has same dtype
+
+            msg = f"""
+            An issue occurred in leaf {i}
+            
+            The original dtype was {original_leaf.dtype}.
+            However, the new leaf had dtype {new_leaf.dtype}
+            
+            These differences are not allowed.
+            """
+            msg = cls.format_error_message(msg, info)
+            checkify.check(original_leaf.dtype == new_leaf.dtype, msg)
+    def set_accumulator(self, name: str, value: PyTree)->'ControllerBuilder':
+        """
+        Sets an accumulator to be filled with a particular series of values.
+
+        This can only replace like accumulator data with PyTree of the same shape.
+        This means those pytrees must be the same tree shape, the leaves must have the same type,
+        and tensor leaves must be of the same shape and dtype.
+
+        :param name: The name of the accumulator to set
+        :param value: The value to set.
+        :return: The new ControllerBuilder
+        :raises: KeyError, if you are trying to set to an accumulator that was never defined.
+        :raises: ValueError, if your pytree is not compatible.
+        """
+
+        # Check if the accumulator was ever setup
+        msg = f"""
+        Accumulator of name '{name}' was never setup using a define statement.
+
+        Use one of the 'define' methods to setup the defaults and the accumulators.
+        This method only allows replacement of already existing features.
+        """
+
+
+        if name not in self.accumulators:
+
+            msg = textwrap.dedent(msg)
+            raise KeyError(msg)
+
+        try:
+            self._validate_same_pytree_structure(self.accumulators[name],
+                                                 value)
+            self._validate_pytree_leaves(self.accumulators,
+                                         value)
+        except Exception as err:
+            msg = f"""
+            An issue occurred while setting an accumulator
+            named {name}
+            """
+            msg = textwrap.dedent(msg)
+            raise ValueError(msg) from err
+
+        accumulators = self.accumulators.copy()
+        accumulators[name] = value
+        state = self.state.replace(accumulators=accumulators)
+        return ControllerBuilder(state)
+
+    def set_defaults(self,
+                     name: str,
+                     value: PyTree
+                     )->'ControllerBuilder':
+        """
+        Sets the default values for accumulators to new values. This does not
+        change any tensor shapes or datatypes.
+
+        This can only replace pytree defaults data with other PyTrees of the same shape.
+        This means those pytrees must be the same tree shape, the leaves must have the same type,
+        and tensor leaves must be of the same shape and dtype.
+
+        Additionally, the default must have been defined using one of the 'define' methods.
+
+        :param name: The name of the default to replace
+        :param value: The pytree to replace it with
+        :return: A new ControllerBuilder where these replacements had occurred
+        :raises: KeyError, if you are trying to set a default that was never defined
+        :raises: ValueError, if the pytrees are not compatible.
+        """
+
+        if name not in self.defaults:
+            msg = f"""
+            Defaults of name '{name}' was never setup using a define statement.
+            
+            Use one of the 'define' methods to setup the defaults and the accumulators.
+            This method only allows replacement of already existing features.
+            """
+            msg = textwrap.dedent(msg)
+            raise KeyError(msg)
+        try:
+
+            self._validate_same_pytree_structure(self.defaults[name],
+                                                 value)
+            self._validate_pytree_leaves(self.defaults[name],
+                                         value
+                                         )
+        except Exception as err:
+            msg = f"An issue occurred while setting defaults of name '{name}'\n"
+            raise ValueError(msg) from err
+
+        defaults = self.defaults.copy()
+        defaults[name] = value
+        state = self.state.replace(defaults=defaults)
+        return ControllerBuilder(state)
+
+    def set_updates(self,
+                    name: str,
+                    values: Optional[PyTree]
+                    )->'ControllerBuilder':
+        """
+        Sets the update values to new values. This does not
+        change any tensor shapes or datatypes.
+
+        This can only replace tensor collections ('pytrees') with other tensors of the same
+        shape as the accumulator, or set the updates channel equal to None.
+
+        :param name: The name of the default to replace
+        :param values: The pytree to replace it with. May also be None
+        :return: A new ControllerBuilder where these replacements had occurred
+        :raises: KeyError, if you are trying to set a default that was never defined
+        :raises: ValueError, if the pytrees are not compatible.
+        """
+        if name not in self.defaults:
+            msg = f"""
+            Defaults of name '{name}' was never setup using a define statement.
+
+            Use one of the 'define' methods to setup the defaults and the accumulators.
+            This method only allows replacement of already existing features.
+            """
+            msg = textwrap.dedent(msg)
+            raise KeyError(msg)
+
+        if values is not None:
+            # Updates is presumed to be a pytree.
+            try:
+                self._validate_same_pytree_structure(self.accumulators[name],
+                                                     values)
+                self._validate_pytree_leaves(self.accumulators[name],
+                                             values
+                                             )
+            except Exception as err:
+                msg = f"An issue occurred while setting an update for '{name}'"
+                raise ValueError(msg) from err
+
+        updates = self.updates.copy()
+        updates[name] = values
+        state = self.state.replace(updates=updates)
+        return ControllerBuilder(state)
 
     # Main definition methods.
     #
@@ -214,7 +561,6 @@ class ControllerBuilder(Immutable):
 
     def _validate_definition_pytree(self,
                                     pytree: Any,
-                                    context: str
                                     ):
         """
         Validates whether or not a proposed definition for an accumulator
@@ -222,17 +568,13 @@ class ControllerBuilder(Immutable):
         pytree jax can handle, is the type floating, and does it posses
         correct batch shapes for all leaves.
 
-        :param pytree: The canidate to validate
-        :param context: The context to display in the error message.
+        :param: pytree_candidate: The canidate to validate
 
         :raises: TypeError, if leaves in the pytree are not of tensor type
         :raises: TypeError, if leaves in the pytree are not of floating dtype
         :raises: ValueError, if leaves in the pytree do not batch the batch shape.
         :raises: ValueError, if leaf in the pytree does not have enough dimensions to handle batch dims.
         """
-
-
-
         def validate_tensor_type(leaf: Any):
             if not isinstance(leaf, (jnp.ndarray, np.ndarray)):
                 msg = f"""
@@ -291,8 +633,6 @@ class ControllerBuilder(Immutable):
                 msg = textwrap.dedent(msg)
                 raise ValueError(msg)
         def validate_leaf(leaf):
-
-
             validate_tensor_type(leaf)
             validate_tensor_floating(leaf)
             validate_tensor_batch_shape(leaf)
@@ -548,7 +888,7 @@ class ControllerBuilder(Immutable):
         return cls(state)
 
     @classmethod
-    def redefine_controller(cls, controller: ACT_Controller)-> 'ControllerBuilder':
+    def edit_controller(cls, controller: ACT_Controller)->'ControllerBuilder':
         """
         Opens up a new builder to edit an existing controller.
 
@@ -559,7 +899,7 @@ class ControllerBuilder(Immutable):
         return cls(controller.state)
 
     @classmethod
-    def redefine_save(cls, save: ACTStates)-> 'ControllerBuilder':
+    def edit_save(cls, save: ACTStates)->'ControllerBuilder':
         """
         Opens up a builder to edit an existing save from any
         class.
@@ -569,14 +909,17 @@ class ControllerBuilder(Immutable):
         """
         return ControllerBuilder(save)
 
+
+
     def build(self)->ACT_Controller:
         """
-        Build the act controller
+        Build the act controller.
         :return: An ACT Controller instance.
         """
         return ACT_Controller(self.state)
     def __init__(self,
-                 state: ACTStates
+                 state: ACTStates,
+                 validate_errors: bool = False
                  ):
         """
         Do not use this class to get your initial act builder.
