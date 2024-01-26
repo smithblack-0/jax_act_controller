@@ -143,6 +143,41 @@ class test_setter_validation(unittest.TestCase):
         with self.assertRaises(checkify.JaxRuntimeError) as:
             self.execute_validation(validate)
     def test_validate_accumulator_exists(self):
+        """ Test that validate accumulator exists functions properly"""
+
+        info_message = "Message produced while testing_validate_accumulator_exists:"
+        target_function = Editor._validate_accumulator_exists
+
+        state = make_empty_state_mockup()
+        accumulator = {"potato" : jnp.array([0.1, 0.2, 0.3])}
+        state = state.replace(accumulators=accumulator, defaults=accumulator)
+
+
+        # Test works properly when accumulator does exist
+        def validate():
+            editor = Editor.edit_save(state)
+            editor._validate_accumulator_exists("potato", info_message)
+        self.execute_validation(validate)
+
+        validate = jax.jit(validate)
+        self.execute_validation(validate)
+
+        # Test throws properly when accumulator does not exist
+        def validate():
+            editor = Editor.edit_save(state)
+            editor._validate_accumulator_exists("tomato", info_message)
+        with self.assertRaises(checkify.JaxRuntimeError) as err:
+            self.execute_validation(validate)
+        if SHOW_ERROR_MESSAGES:
+            print(err.exception)
+
+        validate = jax.jit(validate)
+        with self.assertRaises(checkify.JaxRuntimeError):
+            self.execute_validation(validate)
+
+
+
+
         raise NotImplementedError()
     def test_validate_pytree_structure(self):
         """ This checks if pytrees have the same tree structure"""
