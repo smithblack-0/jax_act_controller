@@ -1,5 +1,8 @@
 """
-Tests for the builder act mechanism
+Tests for the editor act mechanism.
+
+The editor is generally designed to allow the editing
+of the values of an act process.
 """
 
 import itertools
@@ -9,13 +12,12 @@ import jax
 
 from jax import numpy as jnp
 from jax.experimental import checkify
-from src.jax_act.builder import ControllerBuilder
+from src.jax_act.editor import Editor
 from src.jax_act.states import ACTStates
 from src.jax_act import utils
 from src.jax_act.controller import ACT_Controller
 
 SHOW_ERROR_MESSAGES = True
-
 def make_empty_state_mockup() -> ACTStates:
     return ACTStates(
         epsilon=0,
@@ -34,29 +36,34 @@ class test_setter_validation(unittest.TestCase):
         item2 = jnp.ones([10, 5])
         item3 = jnp.zeros([7, 5])
 
-        info_message =  "While testing validate shape"
-        validate_set_shape = checkify.checkify(ControllerBuilder._validate_set_shape)
+        info_message =  "Seen while testing validate shape"
+        test_function = Editor._validate_same_shape
+        def execute_validation(function):
+            function = checkify.checkify(function)
+            err, _ = function()
+            err.throw()
 
-        # Test we do not throw where shapes are compatible
-        err, _ = validate_set_shape(item1, item2, info_message)
-        err.throw()
+        # Test we do not throw when shapes are compatible. Test under
 
-        # Test we do when they are not
+        def validation():
+            test_function(item1, item2, info_message)
+        execute_validation(validation)
+
+        validation = jax.jit(validation)
+        execute_validation(validation)
+
+        # Test we throw when they are not the same
+        def validation():
+            test_function(item1, item3, info_message)
+
         with self.assertRaises(checkify.JaxRuntimeError) as err:
-            error, _ = validate_set_shape(item1, item3, info_message)
-            error.throw()
-
+            execute_validation(validation)
         if SHOW_ERROR_MESSAGES:
             print(err.exception)
 
-
-        # Test we can function when under jit
-
+        validation = jax.jit(validation)
         with self.assertRaises(checkify.JaxRuntimeError) as err:
-            jit_validate= jax.jit(validate_set_shape, static_argnums=[2])
-            error, _ = jit_validate(item1, item3, info_message)
-            error.throw()
-
+            execute_validation(validation)
         if SHOW_ERROR_MESSAGES:
             print(err.exception)
 
@@ -68,12 +75,13 @@ class test_setter_validation(unittest.TestCase):
         info_msg = "While testing validate dtype"
         # Test we do not throw with compatible dtypes
 
-        err, _ = ControllerBuilder._validate_set_dtype(item1, item1, info_msg)
+
+        err, _ = ControllerBuilder._validate_same_dtype(item1, item1, info_msg)
         err.throw()
         # Test we do throw when required
 
         with self.assertRaises(checkify.JaxRuntimeError) as err:
-            error, _ = ControllerBuilder._validate_set_dtype(item1, item2, info_msg)
+            error, _ = ControllerBuilder._validate_same_dtype(item1, item2, info_msg)
             error.throw()
 
         if SHOW_ERROR_MESSAGES:
@@ -82,7 +90,7 @@ class test_setter_validation(unittest.TestCase):
         # Test we can throw under jit conditions
 
         with self.assertRaises(checkify.JaxRuntimeError) as err:
-            jit_validate = jax.jit(ControllerBuilder._validate_set_dtype, static_argnums=[2])
+            jit_validate = jax.jit(ControllerBuilder._validate_same_dtype, static_argnums=[2])
             error, _ = jit_validate(item1, item2, info_msg)
             error.throw()
 

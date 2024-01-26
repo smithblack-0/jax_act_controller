@@ -395,8 +395,21 @@ class ControllerBuilder(Immutable):
         """
         if name in self.defaults:
             warnings.warn("Accumulator and defaults are being overwritten")
+        ### A Warning and important notes ###
+        #
+        # We define a shape definition to be a:
+        #    * List
+        #    * That is filled with ints.
+        #
+        # Finding these nodes is straightforward with jax tree_utils by
+        # providing a custom is_leaf operator to catch those. Unfortunately,
+        # if this returns false, and the involved node cannot be descended by
+        # the built in pytree structure, jax defaults to making it a node anyhow,
+        # rather than raising an error.
+        #
+        # This means a corrupted pytree is only detectable by
+        # seeing if one of the leaves is not the proper leaf type.
 
-        ### DEFINE HELPER FUNCTION ####
         def is_leaf(node: Any)->bool:
             # A node is a leaf if it is
             #  * A list
@@ -408,62 +421,31 @@ class ControllerBuilder(Immutable):
                 return True
             return False
 
-        leaves, tree_def = jax.tree_util.tree_flatten_with_path(shapes)
+        # Main logic begins
+        context_error_message = f"An issue occurred when defining an accumulator named '{name}' directly by shape"
+        leaves, tree_def = jax.tree_util.tree_flatten_with_path(shapes, is_leaf)
+        new_leaves = []
         for i, (path, leaf) in enumerate(leaves):
 
-            # A corrupt pytree is actually somewhat difficult to detect
-            # and signal about. Because of library limitations, we will only
-            # KNOW it is corrupt
+            # If a leaf extracted by flatten does not satisfy
+            # is_leaf, the tree must be corrupt.
             if not is_leaf(leaf):
-
-
-
-
-        def make_tensor(leaf: List[int])->jnp.ndarray:
-             # Convert a list of ints into a tensor
-             # of the same shape
-             if not is_leaf(leaf):
-                 msg = f"""
-                 The shape definition collection is corrupt. 
-                 
-                 A type of {type(leaf)} was reached, but this is not
-                 a valid list of integers
-                 """
-                 msg = textwrap.dedent(msg)
-                 raise TypeError(msg)
-             return jnp.full(leaf, fill_value=fill, dtype=dtype)
-
-        # BEGIN: Main logic
-
-        definition = jax.tree_util.tree_map(make_tensor, shapes, is_leaf=is_leaf)
-        try:
-            new_builder = self._define(name, definition)
-        except Exception as err:
-            msg = f""" 
-            An issue occurred while trying to define an accumulator
-            named '{name}'
-            """
-            msg = textwrap.dedent(msg)
-            raise ValueError(msg) from err
+                msg = f"""
+                A corrupt shapes pytree has been detected. 
+                
+                Leaves of such a tree should consist of solely
+                Lists of Ints. A violating item, child of the node
+                of issue, was found at path:
+                {path} 
+                
+                It was of type {type(leaf)}
+                """
+                msg = utils.format_error_message(msg, context_error_message)
+                raise ValueError(msg)
+            new_leaves.append(jnp.full(leaf, fill_value=fill, dtype=dtype))
+        definition = jax.tree_util.tree_unflatten(tree_def, new_leaves)
+        new_builder = self._define(name, definition, context_error_message)
         return new_builder
-
-    def delete_definition(self, name: str)->'ControllerBuilder':
-        """
-        Delete an existing accumulator definition.
-
-        Return a new controller with the deletion in place
-        :param name: The name of the controller to delete
-        :return: A new ControllerBuilder instance
-        """
-        if name not in self.defaults:
-            msg = f"""\
-            Accumulator of name '{name}' does not exist, and thus
-            cannot be deleted.
-            """
-            msg = textwrap.dedent(msg)
-            raise KeyError(msg)
-
-        return self._delete_definition(name)
 
     # Instance making methods
     @classmethod
@@ -478,14 +460,20 @@ class ControllerBuilder(Immutable):
 
         :param batch_shape: The batch shape. Can be an int, or a list of ints
         :param core_dtype: The dtype of data
-        :param epsilon: The epsilon for the act threshold
+        :param epsilon: The epsilon for the act threshold. Note that if you are passing this
+                        as a variable, it will need to be a staticargnum when compiled.
         :return: A StateBuilder instance
         """
+        context_error_message = "An issue occurred while creating a new builder:"
 
         if core_dtype is not None and not jnp.issubdtype(core_dtype, jnp.floating):
-            raise ValueError("dtype of probabilities core must be floating")
-        if (epsilon >= 1.0) or (epsilon <=0.0):
-            raise ValueError("epsilon insane: Not between 0 and 1")
+            msg = "dtype of probabilities core must be floating"
+            msg = utils.format_error_message(msg, context_error_message)
+            raise ValueError(msg)
+        if (epsilon >= 1.0) or (epsilon <= 0.0):
+            msg = "epsilon insane: Not between 0 and 1"
+            msg = utils.format_error_message(msg, context_error_message)
+            raise ValueError(msg)
 
         probabilities = jnp.zeros(batch_shape, core_dtype)
         residuals = jnp.zeros(batch_shape, core_dtype)
@@ -536,7 +524,7 @@ class ControllerBuilder(Immutable):
         """
         return ACT_Controller(self.state)
     def __init__(self,
-                 state: ACTStates
+                 state: ACTStates,
                  ):
         """
         Do not use this class to get your initial act builder.
