@@ -143,7 +143,7 @@ class test_setter_validation(unittest.TestCase):
         with self.assertRaises(checkify.JaxRuntimeError) as:
             self.execute_validation(validate)
     def test_validate_accumulator_exists(self):
-        pass
+        raise NotImplementedError()
     def test_validate_pytree_structure(self):
         """ This checks if pytrees have the same tree structure"""
 
