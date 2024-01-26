@@ -148,7 +148,6 @@ class Editor(Immutable):
                              info: str,
                              ):
 
-
         msg = f"""
         The original tensor had shape {original.shape}.
         The proposed new tensor has shape {new.shape}. These did not match.
