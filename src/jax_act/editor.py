@@ -209,7 +209,6 @@ class Editor(Immutable):
         :param original: The original pytree feature
         :param new: The new pytree feature
         :param info: The error context to include
-        :raises: ValueError, if the tree structures are different
         """
         state = utils.are_pytree_structure_equal(original, new)
         msg = f"""
@@ -234,39 +233,34 @@ class Editor(Immutable):
 
         :param original: The original pytree to test
         :param new: The new pytree to test.
-        :raises: ValueError, if the leaf types are different
-        :raises: ValueError, if the leaf shapes are different
-        :raises: ValueError, if the leaf dtypes are different
         """
 
         original_leaves = jax.tree_util.tree_leaves(original)
         new_leaves = jax.tree_util.tree_leaves(new)
 
         for i, (original_leaf, new_leaf) in enumerate(zip(original_leaves, new_leaves)):
-            location_msg = f"Error on pytree leaf {i} \n"
-
             # Check if leaf has same shape
             msg = f"""
-               An issue occured in leaf {i}
-
-               The original shape was {original_leaf.shape}.
-               However, the update has shape {new_leaf.shape}
-
-               These do not match.
-               """
+            An issue occurred in leaf {i}
+            
+            The original shape was {original_leaf.shape}.
+            However, the update has shape {new_leaf.shape}
+            
+            These do not match.
+            """
             msg = utils.format_error_message(msg, info)
             checkify.check(original_leaf.shape == new_leaf.shape, msg)
 
             # Check if leaf has same dtype
 
             msg = f"""
-               An issue occurred in leaf {i}
-
-               The original dtype was {original_leaf.dtype}.
-               However, the new leaf had dtype {new_leaf.dtype}
-
-               These differences are not allowed.
-               """
+            An issue occurred in leaf {i}
+            
+            The original dtype was {original_leaf.dtype}.
+            However, the new leaf had dtype {new_leaf.dtype}
+            
+            These differences are not allowed.
+            """
             msg = utils.format_error_message(msg, info)
             checkify.check(original_leaf.dtype == new_leaf.dtype, msg)
     def _execute_validation(self,
@@ -289,6 +283,8 @@ class Editor(Immutable):
             errors.throw()
         elif self.error_mode == ErrorModes.leave_checkify_uncompiled:
             function()
+        else:
+            pass
     def set_probabilities(self, values: jnp.ndarray)->'Editor':
         """
         Sets the values of probabilities to something new
@@ -299,7 +295,7 @@ class Editor(Immutable):
         """
 
         def check_for_errors():
-            context_message = "An issue occurred while attempting to set probailities with an editor: "
+            context_message = "An issue occurred while attempting to set probabilities with an editor: "
             self._validate_same_shape(self.probabilities, values, context_message)
             self._validate_same_dtype(self.probabilities, values, context_message)
             self._validate_probability(values, context_message)

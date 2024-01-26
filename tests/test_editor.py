@@ -8,6 +8,8 @@ of the values of an act process.
 import itertools
 import unittest
 import warnings
+from typing import Callable
+
 import jax
 
 from jax import numpy as jnp
@@ -31,6 +33,11 @@ def make_empty_state_mockup() -> ACTStates:
 
 class test_setter_validation(unittest.TestCase):
     """ Test that the validation functions operate properly"""
+    @staticmethod
+    def execute_validation(function: Callable):
+        function = checkify.checkify(function)
+        err, _ = function()
+        err.throw()
     def test_validate_set_shape(self):
         item1 = jnp.zeros([10, 5])
         item2 = jnp.ones([10, 5])
@@ -38,34 +45,27 @@ class test_setter_validation(unittest.TestCase):
 
         info_message =  "Seen while testing validate shape"
         test_function = Editor._validate_same_shape
-        def execute_validation(function):
-            function = checkify.checkify(function)
-            err, _ = function()
-            err.throw()
-
         # Test we do not throw when shapes are compatible. Test under
 
         def validation():
             test_function(item1, item2, info_message)
-        execute_validation(validation)
+        self.execute_validation(validation)
 
         validation = jax.jit(validation)
-        execute_validation(validation)
+        self.execute_validation(validation)
 
         # Test we throw when they are not the same
         def validation():
             test_function(item1, item3, info_message)
 
         with self.assertRaises(checkify.JaxRuntimeError) as err:
-            execute_validation(validation)
+            self.execute_validation(validation)
         if SHOW_ERROR_MESSAGES:
             print(err.exception)
 
         validation = jax.jit(validation)
-        with self.assertRaises(checkify.JaxRuntimeError) as err:
-            execute_validation(validation)
-        if SHOW_ERROR_MESSAGES:
-            print(err.exception)
+        with self.assertRaises(checkify.JaxRuntimeError) :
+            self.execute_validation(validation)
 
     def test_validate_dtype(self):
         """ Test that validate dtype functions correctly"""
@@ -73,29 +73,30 @@ class test_setter_validation(unittest.TestCase):
         item2 = jnp.ones([10, 5], dtype=jnp.float16)
 
         info_msg = "While testing validate dtype"
+        target_function = Editor._validate_same_dtype
+
         # Test we do not throw with compatible dtypes
+        def validation():
+            target_function(item1, item1, info_msg)
+        self.execute_validation(validation)
 
+        validation = jax.jit(validation)
+        self.execute_validation(validation)
 
-        err, _ = ControllerBuilder._validate_same_dtype(item1, item1, info_msg)
-        err.throw()
         # Test we do throw when required
 
-        with self.assertRaises(checkify.JaxRuntimeError) as err:
-            error, _ = ControllerBuilder._validate_same_dtype(item1, item2, info_msg)
-            error.throw()
+        def validation():
+            target_function(item1, item2, info_msg)
 
+        with self.assertRaises(checkify.JaxRuntimeError) as err:
+            self.execute_validation(validation)
         if SHOW_ERROR_MESSAGES:
             print(err.exception)
 
-        # Test we can throw under jit conditions
+        validation = jax.jit(validation)
+        with self.assertRaises(checkify.JaxRuntimeError):
+            self.execute_validation(validation)
 
-        with self.assertRaises(checkify.JaxRuntimeError) as err:
-            jit_validate = jax.jit(ControllerBuilder._validate_same_dtype, static_argnums=[2])
-            error, _ = jit_validate(item1, item2, info_msg)
-            error.throw()
-
-        if SHOW_ERROR_MESSAGES:
-            print(err.exception)
 
     def test_validate_probabilities(self):
         """ Test that probability validation is good"""
