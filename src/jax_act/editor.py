@@ -209,13 +209,13 @@ class Editor(Immutable):
         :param new: The new pytree feature
         :param info: The error context to include
         """
-        state = utils.are_pytree_structure_equal(original, new)
+        test = utils.are_pytree_structure_equal(original, new)
         msg = f"""
            The original tensor collection or tensor does not have the 
            same tree structure as the new tensor collection or tensor.
            """
         msg = utils.format_error_message(msg, info)
-        checkify.check(state, msg)
+        checkify.check(test, msg)
 
     @staticmethod
     def _validate_pytree_leaves(
