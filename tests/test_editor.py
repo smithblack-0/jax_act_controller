@@ -102,11 +102,16 @@ class test_setter_validation(unittest.TestCase):
         """ Test that probability validation is good"""
 
         info_msg = "While testing validate probabilities"
+        target_function = Editor._validate_probability
 
         # Test that no throw happens when good
         valid_probabilities = jnp.array([0.0, 1.0, 0.3])
-        err, _ = ControllerBuilder._validate_probability(valid_probabilities, info_msg)
-        err.throw()
+        def validate():
+            target_function(valid_probabilities, info_msg)
+        self.execute_validation(validate)
+
+        validate = jax.jit(validate)
+        self.execute_validation(validate)
 
         # Test we do throw when probabilities are too low
 
