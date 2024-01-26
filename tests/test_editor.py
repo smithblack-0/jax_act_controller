@@ -116,49 +116,33 @@ class test_setter_validation(unittest.TestCase):
         # Test we do throw when probabilities are too low
 
         invalid_probabilities = jnp.array([-0.1, 0.3, 0.4])
+        def validate():
+            target_function(invalid_probabilities, info_msg)
         with self.assertRaises(checkify.JaxRuntimeError) as err:
-            error, _ = ControllerBuilder._validate_probability(invalid_probabilities, info_msg)
-            error.throw()
-
+            self.execute_validation(validate)
         if SHOW_ERROR_MESSAGES:
             print("Testing validate_probabilities: When probability too low")
             print(err.exception)
+
+        validate = jax.jit(validate)
+        with self.assertRaises(checkify.JaxRuntimeError):
+            self.execute_validation(validate)
 
         # Test we do throw when probabilities are too high
 
         invalid_probabilities = jnp.array([1.3, 0.3, 0.4])
+        def validate():
+            target_function(invalid_probabilities, info_msg)
         with self.assertRaises(checkify.JaxRuntimeError) as err:
-            error, _ = ControllerBuilder._validate_probability(invalid_probabilities, info_msg)
-            error.throw()
-
+            self.execute_validation(validate)
         if SHOW_ERROR_MESSAGES:
             print("Testing validate_probabilities: When probability too low")
             print(err.exception)
 
-        info_msg = "While testing validate probabilities under jit"
+        validate = jax.jit(validate)
+        with self.assertRaises(checkify.JaxRuntimeError):
+            self.execute_validation(validate)
 
-        # Test we do throw when probabilities are too low under jit
-
-        invalid_probabilities = jnp.array([-0.1, 0.3, 0.4])
-        with self.assertRaises(checkify.JaxRuntimeError) as err:
-            jit_validation = jax.jit(ControllerBuilder._validate_probability, static_argnums=[1])
-            error, _ = jit_validation(invalid_probabilities, info_msg)
-            error.throw()
-        if SHOW_ERROR_MESSAGES:
-            print("Testing validate_probabilities: When probability too low under jit")
-            print(err.exception)
-        # Test we do throw when probabilities are too high
-
-        invalid_probabilities = jnp.array([1.3, 0.3, 0.4])
-        with self.assertRaises(checkify.JaxRuntimeError) as err:
-            jit_validation = jax.jit(ControllerBuilder._validate_probability, static_argnums=[1])
-            error, _ = jit_validation(invalid_probabilities, info_msg)
-            error.throw()
-
-        if SHOW_ERROR_MESSAGES:
-            print("Testing validate_probabilities: When probability too low")
-            print(err.exception)
-        info_msg = "While testing validate probabilities under jit"
     def test_validate_pytree_structure(self):
         """ This checks if pytrees have the same tree structure"""
 
