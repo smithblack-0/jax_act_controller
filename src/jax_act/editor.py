@@ -4,27 +4,22 @@ manual editing of an existing ACT session
 """
 
 
-from typing import Optional, List, Union, Dict, Any, Tuple, Callable
+from typing import Optional, Dict, Any, Tuple, Callable
 
 import jax.tree_util
-import textwrap
-import numpy as np
-import warnings
 from enum import Enum
 from jax import numpy as jnp
 from jax.experimental import checkify
 
 from src.jax_act import utils
 from src.jax_act.states import ACTStates
-from src.jax_act.types import PyTree, PyTreeShapes
+from src.jax_act.types import PyTree
 from src.jax_act.immutable import Immutable
 from src.jax_act.controller import ACT_Controller
 
 class ErrorModes(Enum):
-    debug = 'debug'
+    standard = 'standard'
     silence = 'silence'
-    leave_checkify_uncompiled = 'checkify'
-
 
 class Editor(Immutable):
     f"""
@@ -43,14 +38,15 @@ class Editor(Immutable):
     other sanity checks based on the content can be passed.
 
     To handle this, we use jax.experimental's checkify library. This has the behavior
-    of delaying the raising of the errors until checkify.check is run. To aid with
+    of delaying the raising of the errors until checkify.check is run. To aid with      
     debugging, when initializing the class you can configure build to run in one of three modes
 
     These are:
-        * {ErrorModes.debug}: Raises any errors immediately after calling .build. Not jittable
-        * {ErrorModes.silence}: Ignores any errors. Presumably faster, as the compiler should optimize away the unneeded code.
-        * {ErrorModes.leave_checkify_uncompiled}: Does not cachify.catchify the output stream. You must do it.
-
+        * {ErrorModes.standard.value}: Raises any errors immediately if possible. When jitted in this mode
+                                 you must use checkify.checkify to wrap your jit function.
+        * {ErrorModes.silence.value}: Ignores any errors. Presumably faster under eager mode. Also 
+                                does not require wrapping with checkify to run.
+                
     ---- Leaves and PyTrees ----
 
     Accumulators may be as simple as just a single tensor of a fixed shape,
@@ -107,11 +103,11 @@ class Editor(Immutable):
     ---- instance options ----
 
     edit_controller: Edit a controller
-    load_save: Loads a save for editing
+    edit_save: Loads a save for editing
 
     ---- build methods ----
 
-    .build: Build the instance, and handle any errors.
+    .build: Build a new controller instance.
     """
     @property
     def epsilon(self)->float:
@@ -183,17 +179,25 @@ class Editor(Immutable):
         """
         msg = utils.format_error_message(msg, info)
         checkify.check(~jnp.any(tensor > 1.0), msg)
-
+    @staticmethod
+    def _validate_is_natural_numbers(tensor: jnp.ndarray,
+                                     context: str):
+        msg = f"""
+        The tensor being processed did not consist of whole
+        numbers. That is, numbers >= 0. This is not allowed
+        """
+        msg = utils.format_error_message(msg, context)
+        checkify.check(jnp.all(tensor >= 0), msg)
     def _validate_accumulator_exists(self,
                                      name: str,
-                                     context: str):
+                                     context: str)->bool:
         msg = f"""
         Accumulator of name '{name}' was never setup using a define statement
         in the builder. This means you cannot set to it.
         """
         msg = utils.format_error_message(msg, context)
-        checkify.check(name in self.accumulators, msg)
-
+        checkify.check(name in self.defaults, msg)
+        return name in self.accumulators
     @staticmethod
     def _validate_same_pytree_structure(
             original: PyTree,
@@ -276,12 +280,10 @@ class Editor(Immutable):
         :return: An accumulator containing observed errors
         :raise JaxRuntimeError: If in debug mode, and something goes wrong
         """
-        if self.error_mode == ErrorModes.debug:
+        if self.error_mode == ErrorModes.standard.value:
             function = checkify.checkify(function)
             errors, _ = function()
             errors.throw()
-        elif self.error_mode == ErrorModes.leave_checkify_uncompiled:
-            function()
         else:
             pass
     def set_probabilities(self, values: jnp.ndarray)->'Editor':
@@ -294,7 +296,7 @@ class Editor(Immutable):
         """
 
         def check_for_errors():
-            context_message = "An issue occurred while attempting to set probabilities with an editor: "
+            context_message = "An issue occurred while attempting to set probabilities with an Editor: "
             self._validate_same_shape(self.probabilities, values, context_message)
             self._validate_same_dtype(self.probabilities, values, context_message)
             self._validate_probability(values, context_message)
@@ -313,7 +315,7 @@ class Editor(Immutable):
         :raises: TypeError, if the new and original residual do not have the same dtye.
         """
         def check_for_errors():
-            context_message = "An issue occurred while attempting to set residuals with an editor: "
+            context_message = "An issue occurred while attempting to set residuals with an Editor: "
             self._validate_same_shape(self.residuals, values, context_message)
             self._validate_same_dtype(self.residuals, values, context_message)
             self._validate_probability(values, context_message)
@@ -328,11 +330,13 @@ class Editor(Immutable):
         :return: The new controller builder
         :raises: If the new and original shape differ
         :raises: If the dtype is not int32
+        :raises: If not provided a tensor of natural numbers - numbers >= 0.
         """
         def check_for_errors():
-            context_message = "An error occurred while attempting to set the iterations tensor using an editor"
+            context_message = "An error occurred while attempting to set the iterations tensor using an Editor"
             self._validate_same_shape(self.iterations, values, context_message)
             self._validate_same_dtype(self.iterations, values, context_message)
+            self._validate_is_natural_numbers(values, context_message)
         self._execute_validation(check_for_errors)
         state = self.state.replace(iterations=values)
         return Editor(state, self.error_mode)
@@ -349,12 +353,7 @@ class Editor(Immutable):
         """
 
         def check_for_errors():
-            context_message = "An error occurred while setting to an epsilon using an editor"
-
-            # Check for float type
-            msg = f"Epsilon was not of type float. It was instead of type {type(epsilon)}"
-            msg = utils.format_error_message(msg, context_message)
-            checkify.check(isinstance(epsilon, float), msg)
+            context_message = "An error occurred while setting to an epsilon using an Editor"
 
             # Check epsilon too low
             msg = f"Epsilon was too low. Probabilities should be greater than or equal to zero, got {epsilon}"
@@ -385,10 +384,9 @@ class Editor(Immutable):
 
         def check_for_errors():
             context_error_message = "An error occurred while setting to an accumulator with an Editor:"
-
-            self._validate_accumulator_exists(name, context_error_message)
-            self._validate_same_pytree_structure(self.accumulators[name], value, context_error_message)
-            self._validate_pytree_leaves(self.accumulators[name], value, context_error_message)
+            if self._validate_accumulator_exists(name, context_error_message):
+                self._validate_same_pytree_structure(self.accumulators[name], value, context_error_message)
+                self._validate_pytree_leaves(self.accumulators[name], value, context_error_message)
         self._execute_validation(check_for_errors)
         accumulators = self.accumulators.copy()
         accumulators[name] = value
@@ -414,9 +412,9 @@ class Editor(Immutable):
         """
         def check_for_errors():
             context_error_message = f"An error occurred while setting to a defaults  named '{name}' with an Editor:"
-            self._validate_accumulator_exists(name, context_error_message)
-            self._validate_same_pytree_structure(self.accumulators[name], value, context_error_message)
-            self._validate_pytree_leaves(self.accumulators[name], value, context_error_message)
+            if self._validate_accumulator_exists(name, context_error_message):
+                self._validate_same_pytree_structure(self.accumulators[name], value, context_error_message)
+                self._validate_pytree_leaves(self.accumulators[name], value, context_error_message)
         self._execute_validation(check_for_errors)
         defaults = self.defaults.copy()
         defaults[name] = value
@@ -455,23 +453,24 @@ class Editor(Immutable):
     @classmethod
     def edit_controller(cls,
                         controller: ACT_Controller,
-                        error_mode: str = ErrorModes.debug)->'Editor':
+                        error_mode: str = ErrorModes.standard.value)-> 'Editor':
         """
         Opens up a new Editor to edit an existing controller. Returns the
-        editor.
+        Editor.
 
         :param controller: The controller to edit
         :return: The Editor
         """
-        if error_mode not in ErrorModes:
-            raise ValueError(f"Error mode must have been within {ErrorModes}")
+        modes = [item.value for item in ErrorModes]
+        if error_mode not in modes:
+            raise ValueError(f"Error mode must have been within {modes}")
 
         return cls(controller.state, error_mode)
 
     @classmethod
     def edit_save(cls,
                   save: ACTStates,
-                  error_mode: str = ErrorModes.debug)->'Editor':
+                  error_mode: str = ErrorModes.standard.value)-> 'Editor':
         """
         Opens up a builder to edit an existing save from any
         class.
@@ -479,10 +478,14 @@ class Editor(Immutable):
         :param save: The save to edit
         :return: A new ControllerBuilder instance
         """
-        if error_mode not in ErrorModes:
-            raise ValueError(f"Error mode must have been within {ErrorModes}")
+        modes = [item.value for item in ErrorModes]
+        if error_mode not in modes:
+            raise ValueError(f"Error mode must have been within {modes}")
 
         return cls(save, error_mode)
+
+    def save(self)->ACTStates:
+        return self.state
     def build(self)->ACT_Controller:
         """
         Build the act controller.
@@ -495,7 +498,7 @@ class Editor(Immutable):
                  ):
         """
         This should not be used directly to initialize
-        an editor. Instead, use one of the 'edit' methods
+        an Editor. Instead, use one of the 'edit' methods
         :param state:
         :param error_mode:
         """

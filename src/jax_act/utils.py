@@ -109,7 +109,7 @@ def are_pytrees_equal(tree_one: PyTree, tree_two: PyTree, use_allclose: bool = T
     Checks if two pytrees are almost equal to one another.
     :param tree_one:
     :param tree_two:
-    :return:
+     :return:
     """
 
     def are_leaves_equal(leaf_one: Any, leaf_two: Any)->bool:

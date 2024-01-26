@@ -2,8 +2,6 @@ import unittest
 
 from src.jax_act.states import ACTStates
 import jax
-import flax
-import flax.linen as nn
 import jax.numpy as jnp
 
 
