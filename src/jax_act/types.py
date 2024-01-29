@@ -10,7 +10,7 @@ The leaves should be floating tensors.
 
 
 
-from typing import Union, Tuple, List, Dict
+from typing import Union, Tuple, List, Dict, Protocol
 from jax import numpy as jnp
 
 LeafType = jnp.ndarray
