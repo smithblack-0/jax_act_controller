@@ -1,102 +1,18 @@
-    """
-    The ACT layer protocol and usage definition. 
+"""
+The ACT layer protocol and usage definition.
 
-    This defines the protocol for making a layer that 
-    can easily be incorporated into an act process regardless
-    of framework, and which can still be compiled.
-    
-    ---- contents ----
-    
-    Objects of interest are
-    
-    ACTLayerProtocol: Defines the protocol and restrictions for an act compatible layer, whatever framework is being used
-    execute_act: When passed a layer satisfying the protocol, an initial state, and whatever construction arguments
-                 you want it will run an act iteration in a compile-friendly manner.
+This defines the protocol for making a layer that
+can easily be incorporated into an act process regardless
+of framework, and which can still be compiled.
 
-    ----- The protocol and responsibilities ----
-    
-    Generally
-    
-    
-    ----- methods ----
+---- contents ----
 
-    Two methods must be implemented by a class
-    satisfying this protocol. These are:
+Objects of interest are
 
-    * make_controller: returns a valid controller instance
-    * run_layer: Runs a single act layer, and caches then commits the accumulated features.
-
-    ----- PyTrees and examples ----
-
-    Every example in this documentation provides only a single tensor as a passthrough, but
-    it need not. So long as the input is a PyTree, and you provide functions that know how to
-    use it, everything should run fine.
-    
-    ----- Python Equivalency ----
-    
-    It is useful to understand what the python equivalency of code
-    you write would be, since this code is executed in a functional
-    loop behind the scenes. 
-
-    ----- make controller -----
-
-    Make controller should, as the name suggests,
-    make a new controller that is defined such it is
-    usable later on in run_layer. It can use the initial state
-    to decide on details such as batch shape
-
-    A reasonable definition to hold two accumulators,
-    'output' and 'state', might look like:
-
-    ```
-    def make_controller(self,
-                        initial_state: jnp.ndarray,
-                        num_heads: int,
-                        embeddings_width: int,
-                        )->ACT_Controller:
-        batch_dimension = initial_state.shape[0]
-        builder = ControllerBuilder.new_builder(batch_dimension)
-        builder = builder.define_accumulator_by_shape("state", [batch_dimension, num_heads, embedding_width])
-        builder = builder.define_accumulator_by_shape("output", [batch_dimension, num_heads, embedding_width])
-        return builder.build()
-
-    ```
-
-    However, note that initial state need not be a tensor. You may
-    very well want your own custom structure. That is fine. So long as
-    you provide a valid jax PyTree, and know how to use it to make
-    a controller, the function will run just fine.
-
-
-    ---- run_layer ----
-
-    This should, conceptually, run a single iteration of the
-    act process. This means accepting the controller and current
-    state, updating the current state, making updates and caching
-    them in appropriate accumulators, then committing them with
-    halting probabilities.
-
-    A reasonable example involving internal helper functions "update_state" and
-    "get_halting_probabilities", and accumulating "state" and "output" tensors is
-    shown below.
-
-    ```
-    def run_layer(self,
-                  controller: ACT_Controller,
-                  state: jnp.ndarray
-                  )->Tuple[ACT_Controller, jnp.ndarray]:
-
-        state = self.update_state(state)
-        output = self.make_output(state)
-        halting_probabilities = self.make_halting_probabilities(state)
-
-        controller = controller.cache_update("state", state)
-        controller = controller.cache_update("output", output)
-        controller = controller.iterate_act(halting_probabilities)
-        return controller, state
-    ```
-
-    """
+ACTLayerProtocol: Defines the protocol and restrictions for an act compatible layer, whatever framework is being used
+execute_act: When passed a layer satisfying the protocol, an initial state, and whatever construction arguments
+             you want it will run an act iteration in a compile-friendly manner.
+"""
 
 from typing import Tuple, Union, List, Optional, Callable, Dict, Protocol, Any
 
@@ -138,19 +54,62 @@ class ACTLayerProtocol(Protocol):
 
     Error messages exist suggesting when you are making this mistake.
 
-    ---- restrictions: make_controller ----
+    ---- details: make_controller ----
 
     Make controller must return an ACT_Controller instance, and the
     controller must not be empty. It also should be compatible with the
     downstream run_layer call.
 
 
-    ---- restrictions: run_layer -----
+    A reasonable definition to hold two accumulators,
+    'output' and 'state', might look like:
 
-    Run layer must execute a single act step. This means it
-    must update the internal state, use that to update
-    any accumulators, and then commit them using halting
-    probabilities.
+    ```
+    def make_controller(self,
+                        initial_state: jnp.ndarray,
+                        num_heads: int,
+                        embeddings_width: int,
+                        )->ACT_Controller:
+        batch_dimension = initial_state.shape[0]
+        builder = ControllerBuilder.new_builder(batch_dimension)
+        builder = builder.define_accumulator_by_shape("state", [batch_dimension, num_heads, embedding_width])
+        builder = builder.define_accumulator_by_shape("output", [batch_dimension, num_heads, embedding_width])
+        return builder.build()
+
+    ```
+
+    However, note that initial state need not be a tensor. You may
+    very well want your own custom structure. That is fine. So long as
+    you provide a valid jax PyTree, and know how to use it to make
+    a controller, the function will run just fine.
+
+    ---- details: run_layer -----
+
+    This should, conceptually, run a single iteration of the
+    act process. This means accepting the controller and current
+    state, updating the current state, making updates and caching
+    them in appropriate accumulators, then committing them with
+    halting probabilities.
+
+    A reasonable example involving internal helper functions "update_state" and
+    "get_halting_probabilities", and accumulating "state" and "output" tensors is
+    shown below.
+
+    ```
+    def run_layer(self,
+                  controller: ACT_Controller,
+                  state: jnp.ndarray
+                  )->Tuple[ACT_Controller, jnp.ndarray]:
+
+        state = self.update_state(state)
+        output = self.make_output(state)
+        halting_probabilities = self.make_halting_probabilities(state)
+
+        controller = controller.cache_update("state", state)
+        controller = controller.cache_update("output", output)
+        controller = controller.iterate_act(halting_probabilities)
+        return controller, state
+    ```
 
     """
     def make_controller(self,
@@ -357,8 +316,21 @@ def execute_act(layer: ACTLayerProtocol,
     layer follows the ACTLayerProtocol and an initial state
     is provided. Optionally, suppress errors.
 
+    ---- Python equivalency ----
+
+    This code has a python equivalent. In particular, it behaves like:
+
+    ```
+    initial_state = ...
+
+    state = initial_state
+    controller = layer.make_controller(state)
+    while not controller.is_halted:
+        controller, state = layer.run_layer(controller, state)
+    ```
+
     :param layer: A layer implementing the ACTLayerProtocol
-    :param initial_state: The intial state. Usually just a tensor, but can be a pytree
+    :param initial_state: The initial state. Usually just a tensor, but can be a pytree
     :param check_for_errors: Whether to check for errors or charge ahead blindly.
     :return: A controller with the results stored in it, and the final state.
     """
