@@ -17,6 +17,7 @@ def format_error_message(message: str, context: str)->str:
     :param context: The context for the message
     :return: A string representing the message
     """
+    context = textwrap.dedent(context)
     message = textwrap.dedent(message)
     message = textwrap.indent(message, "    ")
     return context + "\n" + message
