@@ -199,9 +199,9 @@ class _ACTWrapper:
             raise RuntimeError(msg)
 
     @staticmethod
-    def _validate_was_new_controller_returned(original_controller: ACT_Controller,
-                                              new_controller: ACT_Controller,
-                                              context: str):
+    def _validate_is_novel_controller(original_controller: ACT_Controller,
+                                      new_controller: ACT_Controller,
+                                      context: str):
         if new_controller is original_controller:
             msg = f"""
             Original and new controller were the same. This
@@ -280,7 +280,7 @@ class _ACTWrapper:
             # Validate the controller
             new_controller, _ = update
             self._validate_is_controller(new_controller, context_message)
-            self._validate_was_new_controller_returned(controller, new_controller, context_message)
+            self._validate_is_novel_controller(controller, new_controller, context_message)
             self._validate_all_act_updates_committed(controller, context_message)
         self._execute_validation(validate)
         return update
