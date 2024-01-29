@@ -495,31 +495,9 @@ class ControllerBuilder(Immutable):
 
         return cls(state)
 
-    @classmethod
-    def redefine_controller(cls, controller: ACT_Controller)-> 'ControllerBuilder':
-        """
-        Opens up a new builder to edit an existing controller.
-
-        Returns, as normal, the builder.
-        :param controller: The controller to edit
-        :return: The builder
-        """
-        return cls(controller.state)
-
-    @classmethod
-    def redefine_save(cls, save: ACTStates)-> 'ControllerBuilder':
-        """
-        Opens up a builder to edit an existing save from any
-        class.
-
-        :param save: The save to edit
-        :return: A new ControllerBuilder instance
-        """
-        return ControllerBuilder(save)
-
     def build(self)->ACT_Controller:
         """
-        Build the act controller
+        Build the act controller instance directly.
         :return: An ACT Controller instance.
         """
         return ACT_Controller(self.state)
