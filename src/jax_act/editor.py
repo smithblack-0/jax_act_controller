@@ -38,14 +38,20 @@ class Editor(Immutable):
     other sanity checks based on the content can be passed.
 
     To handle this, we use jax.experimental's checkify library. This has the behavior
-    of delaying the raising of the errors until checkify.check is run. To aid with      
-    debugging, when initializing the class you can configure build to run in one of three modes
+    of delaying the raising of the errors until checkify.checkify is run. To aid with      
+    debugging, when initializing the class you can configure build to run in one of several modes
 
     These are:
-        * {ErrorModes.standard.value}: Raises any errors immediately if possible. When jitted in this mode
+        * "standard": Raises any errors immediately if possible. When jitted in this mode
                                  you must use checkify.checkify to wrap your jit function.
-        * {ErrorModes.silence.value}: Ignores any errors. Presumably faster under eager mode. Also 
+        * "silence": Ignores any errors. Presumably faster under eager mode. Also 
                                 does not require wrapping with checkify to run.
+                                
+    What this means is if you keep the class in standard mode, and then run a jit process, you
+    commit yourself to wrapping the jit process w1ith checkify.checkify and then throwing
+    your errors through it.
+    
+    However, errors are raised promptly at the moment of arrival when operating in eager mode.
                 
     ---- Leaves and PyTrees ----
 
@@ -109,6 +115,7 @@ class Editor(Immutable):
 
     .build: Build a new controller instance.
     """
+    #TODO: Add examples.
     @property
     def epsilon(self)->float:
         return self.state.epsilon
