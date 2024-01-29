@@ -12,7 +12,7 @@ from src.jax_act import utils
 from src.jax_act.states import ACTStates
 from src.jax_act.controller import ACT_Controller
 
-SHOW_ERROR_MESSAGES = True
+SHOW_ERROR_MESSAGES = False
 def make_empty_state_mockup() -> ACTStates:
     return ACTStates(
         epsilon=0,
@@ -137,12 +137,12 @@ class test_private_helpers(unittest.TestCase):
         # Test we raise when too high
 
 
-        with self.assertRaises(jax._src.checkify.JaxRuntimeError):
+        with self.assertRaises(checkify.JaxRuntimeError):
             err, _ = ACT_Controller.validate_probability(jnp.array([0, 3.0]))
             err.throw()
 
         # Test we raise when too low
-        with self.assertRaises(jax._src.checkify.JaxRuntimeError):
+        with self.assertRaises(checkify.JaxRuntimeError):
             err, _ = ACT_Controller.validate_probability(jnp.array([0, -1.0]))
             err.throw()
 

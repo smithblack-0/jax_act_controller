@@ -9,9 +9,6 @@ import numpy as np
 
 from jax import numpy as jnp
 from src import jax_act
-
-
-
 class test_act_processes(unittest.TestCase):
     """
     Test that some act processes are easily
@@ -44,7 +41,7 @@ class test_act_processes(unittest.TestCase):
         controller = builder.build()
 
         # Perform ACT process
-        while not controller.is_completely_halted:
+        while ~controller.is_completely_halted:
 
             new_state = mockup_state_update()
             new_output = mockup_output_update()
@@ -55,21 +52,6 @@ class test_act_processes(unittest.TestCase):
             controller = controller.iterate_act(new_probabilities)
 
 class test_functional_act_processes(unittest.TestCase):
-
-    def test_vmap(self):
-
-        array = jnp.array([-1.0, 0.0, 3.0])
-
-        @jax.jit
-        def make_choice(item: jnp.ndarray):
-            return jax.lax.cond(item > 0, lambda: 1.0, lambda: -1.0)
-
-
-        mapper = jax.vmap(make_choice, 0, 0)
-        output = mapper(array)
-        print(output)
-
-
     def test_basic_act_functional(self):
         """
         Test that we can perform a vanilla act

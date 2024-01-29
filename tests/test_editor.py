@@ -20,7 +20,7 @@ from src.jax_act import utils
 from src.jax_act.controller import ACT_Controller
 from src.jax_act.types import PyTree
 
-SHOW_ERROR_MESSAGES = True
+SHOW_ERROR_MESSAGES = False
 def make_empty_state_mockup() -> ACTStates:
     return ACTStates(
         epsilon=0,
