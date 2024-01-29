@@ -124,6 +124,13 @@ class ACT_Controller(Immutable):
     def is_any_halted(self)->bool:
         return jnp.any(self.halted_batches)
 
+    @property
+    def updates_ready_to_commit(self)->bool:
+        return all([self.state.updates[key] is None for key in self.state.updates])
+    @property
+    def has_cached_updates(self)->bool:
+        return any([self.state.updates[key] is None for key in self.state.updates])
+
     # Minor validation logic
 
     @staticmethod
