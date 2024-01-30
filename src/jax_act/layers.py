@@ -312,26 +312,39 @@ def execute_act(layer: ACTLayerProtocol,
                 **kwargs,
                 ) -> Tuple[ACT_Controller, PyTree]:
     """
+
     Runs a compilable act process so long as the provided
     layer follows the ACTLayerProtocol and an initial state
     is provided. Optionally, suppress errors.
 
-    ---- Python equivalency ----
+    ---- Responsibilities and contract ----
 
-    This code has a python equivalent. In particular, it behaves like:
+    This function promises to execute a 'jittable' formulation of adaptive
+    computation time (act) when given a layer that follows the ACT Layer Protocol.
+
+    Conceptually, the responsibility of the function is to provide a loop
+    that can be 'jitted', and to provide reasonable sanity checking regarding
+    adherence to the ACT Layey Protocol.
+
+    The layer conforming to the ACT Layer Protocol must in turn perform the
+    actual act update process.
+
+    The function, when not encountering errors, behaves like the following python equivalent code:
 
     ```
-    initial_state = ...
-
-    state = initial_state
-    controller = layer.make_controller(state)
-    while not controller.is_halted:
-        controller, state = layer.run_layer(controller, state)
+    def execute_act(layer, initial_state, *args, **kwargs):
+        controller = controller.make_controller(initial_state, *args, **kwargs)
+        state = initial_state
+        while not controller.is_halted:
+            controller, state = layer.run_layer(controller, state)
+        return controller, state
     ```
 
     :param layer: A layer implementing the ACTLayerProtocol
     :param initial_state: The initial state. Usually just a tensor, but can be a pytree
     :param check_for_errors: Whether to check for errors or charge ahead blindly.
+    :param *args: Any args to pass into make_controller
+    :param **kwargs: Any keyword args to pass into make_controller.
     :return: A controller with the results stored in it, and the final state.
     """
     act_layer = _ACTWrapper(layer, check_for_errors)
