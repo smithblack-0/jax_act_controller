@@ -143,3 +143,81 @@ class test_functional_act_processes(unittest.TestCase):
         self.assertTrue(jax_act.utils.are_pytrees_equal(original_leafs, functional_leafs))
 
 
+class test_execute_act(unittest.TestCase):
+    """
+    Test execute_act.
+    """
+
+    class ACTMockLayer:
+
+        def update_state(self, state: jnp.ndarray) -> jnp.ndarray:
+            # Mock function
+            return state + 0.1 * jnp.ones_like(state)
+
+        def make_probabilities(self, state: jnp.ndarray) -> jnp.ndarray:
+            # Mock function
+            batch_shape = state.shape[0]
+            return 0.1 * jnp.ones([batch_shape])
+
+        def make_output(self, state: jnp.ndarray) -> jnp.ndarray:
+            # Mock function
+            batch_shape = state.shape[0]
+            return 0.1 * jnp.ones([batch_shape, self.embedding_dim])
+
+        def make_controller(self, state: jnp.ndarray) -> jax_act.ACT_Controller:
+            batch_shape = state.shape[0]
+            builder = jax_act.ControllerBuilder.new_builder(batch_shape)
+            builder = builder.define_accumulator_by_shape("state", list(state.shape))
+            builder = builder.define_accumulator_by_shape("output", [batch_shape, self.embedding_dim])
+            return builder.build()
+
+        def run_layer(self, controller: jax_act.ACT_Controller, state: jnp.ndarray
+                      ) -> Tuple[jax_act.ACT_Controller, jnp.ndarray]:
+            state = self.update_state(state)
+            output = self.make_output(state)
+            probs = self.make_probabilities(state)
+
+            controller = controller.cache_update("state", state)
+            controller = controller.cache_update("output", output)
+            controller = controller.iterate_act(probs)
+
+            return controller, state
+
+        def __init__(self,
+                     embedding_dim: int = 10,
+                     ):
+            self.embedding_dim = embedding_dim
+
+    def get_layer(self, embedding_dim: int) -> 'ACTMockLayer':
+        return self.ACTMockLayer(embedding_dim)
+
+    def test_execute_act(self):
+        """ Test that a valid instance of execute act will work"""
+        batch_dim = 10
+        embedding_dim = 12
+
+        initial_state = jnp.zeros([batch_dim, embedding_dim])
+        layer = self.get_layer(embedding_dim)
+
+        controller, state = jax_act.execute_act(layer,
+                                        initial_state)
+        self.assertTrue(jnp.all(initial_state != state))
+
+    def test_execute_act_jit(self):
+        """ Test that a valid instance of execute act will work under jit"""
+        batch_dim = 10
+        embedding_dim = 12
+
+        initial_state = jnp.zeros([batch_dim, embedding_dim])
+        layer = self.get_layer(embedding_dim)
+
+        def execute_act_jit_helper(state):
+            # Jit does not like passing around layers
+            #
+            # However, as users are usually going to be passing
+            # in the layers from self, it should be fine.
+            return jax_act.execute_act(layer, state)
+
+        jit_function = jax.jit(execute_act_jit_helper)
+        controller, state = jit_function(initial_state)
+        self.assertTrue(jnp.all(initial_state != state))

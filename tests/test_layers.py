@@ -287,6 +287,7 @@ class test_execute_act(unittest.TestCase):
             self.embedding_dim = embedding_dim
     def get_layer(self, embedding_dim: int)->'ACTMockLayer':
         return self.ACTMockLayer(embedding_dim)
+
     def test_execute_act(self):
         """ Test that a valid instance of execute act will work"""
         batch_dim = 10
@@ -307,6 +308,9 @@ class test_execute_act(unittest.TestCase):
         layer = self.get_layer(embedding_dim)
         def execute_act_jit_helper(state):
             # Jit does not like passing around layers
+            #
+            # However, as users are usually going to be passing
+            # in the layers from self, it should be fine.
             return execute_act(layer, state)
 
         jit_function = jax.jit(execute_act_jit_helper)
