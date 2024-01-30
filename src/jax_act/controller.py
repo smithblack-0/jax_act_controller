@@ -126,10 +126,10 @@ class ACT_Controller(Immutable):
 
     @property
     def updates_ready_to_commit(self)->bool:
-        return all([self.state.updates[key] is None for key in self.state.updates])
+        return all([self.state.updates[key] is not None for key in self.state.updates])
     @property
     def has_cached_updates(self)->bool:
-        return any([self.state.updates[key] is None for key in self.state.updates])
+        return any([self.state.updates[key] is not None for key in self.state.updates])
 
     # Minor validation logic
 
