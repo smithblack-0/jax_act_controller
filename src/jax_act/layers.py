@@ -40,76 +40,76 @@ class ACTLayerProtocol(Protocol):
     * make_controller: returns a valid controller instance
     * run_layer: Runs a single act layer, and caches then commits the accumulated features.
 
-    ---- caution about immutability -----
+    ---- Responsibilities and Contract ----
 
-    Be careful you are using the immutable ControllerBuilder and Controller
-    objects right. You should never write any code that assumes mutability
-    such as:
+    To fill out it's promise, the layer implementing the ACT Layer Protocol must
 
-    controller.cache_update(... your update)
+    1) Create a controller when asked of it using make_controller, using the initial state and any
+       construction flags
+    2) Run a single act layer when run_layer is called, and return an updated controller and an updated
+       state.
 
-    Instead, do:
+    ---- Responsibility details: make_controller ----
 
-    controller = controller.cache_update(... your update)
+    The purpose of make_controller is to make a controller with
+    accumulators and batch shape setup for accumulation purposes.
 
-    Error messages exist suggesting when you are making this mistake.
+    The returned controller:
+        * Must be an ACT_Controller instance
+        * Must have accumulators to gather
 
-    ---- details: make_controller ----
+    Failure to conform to this will cause an error to
+    be raised in later methods.
 
-    Make controller must return an ACT_Controller instance, and the
-    controller must not be empty. It also should be compatible with the
-    downstream run_layer call.
+    See the method for a full list of contract requirements.
 
+    ---- Responsibilities details: run_layer ----
 
-    A reasonable definition to hold two accumulators,
-    'output' and 'state', might look like:
+    The purpose of run_layer is to accept the current state and
+    run an act update. Minimal restrictions are placed on the coder
+    to allow full flexibility.
 
-    ```
-    def make_controller(self,
+    This function IS what implements the actual act process,
+    sans the while loop. It should consume the current controller
+    and current state, and return the new controller and new state.
+
+    Note that importantly, since the controller is immutable, the new
+    controller must be a new instance from the original controller. It
+    must also have had all accumulators filled and committed.
+
+    See the method for a full list of contract requirements.
+
+    ---- Code Examples: Simple ACT ----
+    '''
+    class SimpleActLayer(...your_framework):
+        ....
+
+        def make_controller(self,
                         initial_state: jnp.ndarray,
                         num_heads: int,
                         embeddings_width: int,
                         )->ACT_Controller:
-        batch_dimension = initial_state.shape[0]
-        builder = ControllerBuilder.new_builder(batch_dimension)
-        builder = builder.define_accumulator_by_shape("state", [batch_dimension, num_heads, embedding_width])
-        builder = builder.define_accumulator_by_shape("output", [batch_dimension, num_heads, embedding_width])
-        return builder.build()
+            batch_dimension = initial_state.shape[0]
+            builder = ControllerBuilder.new_builder(batch_dimension)
+            builder = builder.define_accumulator_by_shape("state", [batch_dimension, num_heads, embedding_width])
+            builder = builder.define_accumulator_by_shape("output", [batch_dimension, num_heads, embedding_width])
+            return builder.build()
+        def run_layer(self,
+                      controller: ACT_Controller,
+                      state: jnp.ndarray
+                      )->Tuple[ACT_Controller, jnp.ndarray]:
 
+            state = self.update_state(state)
+            output = self.make_output(state)
+            halting_probabilities = self.make_halting_probabilities(state)
+
+            controller = controller.cache_update("state", state)
+            controller = controller.cache_update("output", output)
+            controller = controller.iterate_act(halting_probabilities)
+            return controller, state
     ```
 
-    However, note that initial state need not be a tensor. You may
-    very well want your own custom structure. That is fine. So long as
-    you provide a valid jax PyTree, and know how to use it to make
-    a controller, the function will run just fine.
 
-    ---- details: run_layer -----
-
-    This should, conceptually, run a single iteration of the
-    act process. This means accepting the controller and current
-    state, updating the current state, making updates and caching
-    them in appropriate accumulators, then committing them with
-    halting probabilities.
-
-    A reasonable example involving internal helper functions "update_state" and
-    "get_halting_probabilities", and accumulating "state" and "output" tensors is
-    shown below.
-
-    ```
-    def run_layer(self,
-                  controller: ACT_Controller,
-                  state: jnp.ndarray
-                  )->Tuple[ACT_Controller, jnp.ndarray]:
-
-        state = self.update_state(state)
-        output = self.make_output(state)
-        halting_probabilities = self.make_halting_probabilities(state)
-
-        controller = controller.cache_update("state", state)
-        controller = controller.cache_update("output", output)
-        controller = controller.iterate_act(halting_probabilities)
-        return controller, state
-    ```
 
     """
     def make_controller(self,
@@ -117,6 +117,29 @@ class ACTLayerProtocol(Protocol):
                         *args,
                         **kwargs
                         ) -> ACT_Controller:
+        """
+
+        A piece of the contract protocol.
+
+        This method is responsible for creating a controller
+        from the initial state (useful for batch shape information),
+        and from any user-defined args or kwargs.
+
+        You should use this section to:
+            * Create a builder
+            * Use the builder to define all accumulators you will need in your act computation
+            * Build the controller.
+            * Return the controller
+
+        You will be detected violating the contract by functions using this if you:
+            * Do not return a controller
+            * Return a controller that is empty (has no accumulators defined).
+
+        :param initial_state: The initial state, as seen by the act process
+        :param args: Any argument flags
+        :param kwargs: Any keyword arg flags
+        :return: An ACT_Controller instance with one or more accumulators.
+        """
         pass
 
     def run_layer(self,
