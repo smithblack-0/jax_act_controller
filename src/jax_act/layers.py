@@ -147,6 +147,10 @@ class ACTLayerProtocol(Protocol):
                   state: PyTree,
                   ) -> Tuple[ACT_Controller, PyTree]:
         pass
+        """
+        
+        
+        """
 
 
 # The wrapper provides validation and a little bit of
