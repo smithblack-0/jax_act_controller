@@ -89,14 +89,13 @@ class AbstractLayerMixin(ABC):
     the contract.
 
     '''
-    TODO: Update code example
 
     from jax_act import ControllerBuilder, ACT_Controller
     from jax import numpy as jnp
 
-    class SimpleActLayer(...your_framework):
+    class SimpleActLayer(AbstractLayerMixin, ...your_framework):
         ....
-        def update_state(state: jnp.ndarray)->jnp.ndarray:
+        def update_state(state: jnp.ndarray, input: jnp.ndarray)->jnp.ndarray:
             ... your update function
 
         def make_output(state: jnp.ndarray)->jnp.ndarray:
@@ -106,10 +105,10 @@ class AbstractLayerMixin(ABC):
             ... your halting probability functions
 
         def make_controller(self,
-                        initial_state: jnp.ndarray,
-                        num_heads: int,
-                        embeddings_width: int,
-                        )->ACT_Controller:
+                            initial_state: jnp.ndarray,
+                            num_heads: int,
+                            embeddings_width: int,
+                            )->ACT_Controller:
 
             batch_dimension = initial_state.shape[0]
             builder = ControllerBuilder.new_builder(batch_dimension)
@@ -119,10 +118,11 @@ class AbstractLayerMixin(ABC):
 
         def run_layer(self,
                       controller: ACT_Controller,
-                      state: jnp.ndarray
+                      state: jnp.ndarray,
+                      input: jnp.ndarray
                       )->Tuple[ACT_Controller, jnp.ndarray]:
 
-            state = self.update_state(state)
+            state = self.update_state(state, input)
             output = self.make_output(state)
             halting_probabilities = self.make_halting_probabilities(state)
 
@@ -130,6 +130,19 @@ class AbstractLayerMixin(ABC):
             controller = controller.cache_update("output", output)
             controller = controller.iterate_act(halting_probabilities)
             return controller, state
+
+        # We suppose here we are using something like flax, where
+        # you implement your logic using __call__
+        def __call__(self, state: jnp.ndarray, input: jnp.ndarray):
+            # Runs act
+            controller, _ = self.execute_act(tensor, input)
+
+            # Returns result
+            state = controller.accumulators["state"]
+            output = controller.accumulators["output"]
+            return state, output.
+
+
     ```
     """
     @staticmethod
@@ -193,6 +206,8 @@ class AbstractLayerMixin(ABC):
     def run_iteration(self,
                   controller: ACT_Controller,
                   state: PyTree,
+                  *args,
+                  **kwargs,
                   ) -> Tuple[ACT_Controller, PyTree]:
         """
         A piece of the contract protocol that must be defined.
