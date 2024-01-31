@@ -134,6 +134,30 @@ class AbstractLayerMixin(ABC):
             return controller, state
     ```
     """
+    @staticmethod
+    def _is_act_not_complete(combined_state: Tuple[ACT_Controller, PyTree]) -> bool:
+        controller, _ = combined_state
+        return ~controller.is_completely_halted
+
+    @staticmethod
+    def _while_loop_adapter_factory(layer: '_ACTValidationWrapper'
+                                    ) -> Callable[
+        [Tuple[ACT_Controller, PyTree]],
+        Tuple[ACT_Controller, PyTree]
+    ]:
+        """
+        This is primarily an interface between the
+        jax.lax.while_loop restrictions and how
+        items are passed around to users.
+        """
+
+        def run_layer_adapter(state: Tuple[ACT_Controller, PyTree]
+                              ) -> Tuple[ACT_Controller, PyTree]:
+            controller, state = state
+            controller, state = layer.run_layer(controller, state)
+            return controller, state
+
+        return run_layer_adapter
     @abstractmethod
     def make_controller(self,
                         initial_state: PyTree,
@@ -166,6 +190,8 @@ class AbstractLayerMixin(ABC):
         :return: An ACT_Controller instance with one or more accumulators.
         """
         raise NotImplementedError()
+
+    @abstractmethod
     def run_iteration(self,
                   controller: ACT_Controller,
                   state: PyTree,
@@ -188,10 +214,72 @@ class AbstractLayerMixin(ABC):
             * A returned controller is the original controller instance.
             * A returned controller never had all its cached updates committed using iterate_act
 
+        Additionally, you are also violating your contract, but will not be told explictly such
+        by the class, if you:
+            * Do not use the created controller correctly in run_iteration
+
         :param controller: The act controller for the current iteration
         :param state: The state for the current iteration.
         """
         raise NotImplementedError()
+
+    def execute_act(self,
+                    initial_state: PyTree,
+                    check_for_errors: bool = True,
+                    *args,
+                    **kwargs,
+                    ) -> Tuple[ACT_Controller, PyTree]:
+        """
+
+        Runs a compilable act process so long as the contract
+        has been fulfilled between the parent and subclass.
+
+        Hunts down and throws a variety of errors if it has
+        not been.
+
+        ---- Responsibilities and contract ----
+
+        This function promises to execute a 'jittable' formulation of adaptive
+        computation time (act) when given a layer that follows the ACT Layer Protocol,
+        so long as all user components were also jittable.
+
+        Conceptually, the responsibility of the function is to provide a loop
+        that can be 'jitted', and to provide reasonable sanity checking regarding
+        adherence to the contract. The layer implementing run_iteration and
+        make_controller must, in turn, run act itself.
+
+        The layer conforming to the ACT Layer Protocol must in turn perform the
+        actual act update process.
+
+        This function behaves like the following python code when
+        no errors are encountered.
+        ```
+        def execute_act(self, initial_state, *args, **kwargs):
+            controller = self.make_controller(initial_state, *args, **kwargs)
+            state = initial_state
+            while not controller.is_halted:
+                controller, state = self.run_iteration(controller, state)
+            return controller, state
+        ```
+        :param initial_state: The initial state. This can be just a simple tensor,
+                              but can also be a complex pytree if desired.
+        :param check_for_errors: Whether to check for errors or charge ahead blindly.
+                                 Disabling check_for_errors should remove all errors
+                                 overhead when compiled.
+        :param *args: Any args to pass into make_controller
+        :param **kwargs: Any keyword args to pass into make_controller.
+        :return: A controller with the results stored in it, and the final state.
+        """
+        act_layer = _ACTValidationWrapper(self, check_for_errors)
+        controller = act_layer.make_controller(initial_state, *args, **kwargs)
+
+        wrapped_state = (controller, initial_state)
+        run_layer = self._while_loop_adapter_factory(act_layer)
+        controller, final_state = jax.lax.while_loop(self._is_act_not_complete,
+                                                     run_layer,
+                                                     wrapped_state
+                                                     )
+        return controller, final_state
 
 
 class _ACTValidationWrapper:
@@ -199,7 +287,7 @@ class _ACTValidationWrapper:
     Provides validation on returns.
     """
     def __init__(self,
-                 layer: ACTLayerProtocol,
+                 layer: AbstractLayerMixin,
                  check_errors: bool
                  ):
         self.layer = layer
@@ -343,7 +431,7 @@ class _ACTValidationWrapper:
                   state: PyTree
                   ) -> Tuple[ACT_Controller, PyTree]:
 
-        update = self.layer.run_layer(controller, state)
+        update = self.layer.run_iteration(controller, state)
         def validate():
             # Perform return formatting validation
             context_message = "An issue occurred while validating the execution of run_layer"
@@ -359,26 +447,9 @@ class _ACTValidationWrapper:
         return update
 
 
-def _is_act_not_complete(combined_state: Tuple[ACT_Controller, PyTree]) -> bool:
-    controller, _ = combined_state
-    return ~controller.is_completely_halted
 
-def _while_loop_adapter_factory(layer: _ACTValidationWrapper
-                                )->Callable[
-                                   [Tuple[ACT_Controller, PyTree]],
-                                   Tuple[ACT_Controller, PyTree]
-                                   ]:
-    """
-    This is primarily an interface between the
-    jax.lax.while_loop restrictions and how
-    items are passed around to users.
-    """
-    def run_layer_adapter(state: Tuple[ACT_Controller, PyTree]
-                          )->Tuple[ACT_Controller, PyTree]:
-        controller, state = state
-        controller, state = layer.run_layer(controller, state)
-        return controller, state
-    return run_layer_adapter
+
+
 def execute_act(layer: ACTLayerProtocol,
                 initial_state: PyTree,
                 check_for_errors: bool = True,
