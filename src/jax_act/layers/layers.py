@@ -16,8 +16,6 @@ from src.jax_act.controller import ACT_Controller
 from src.jax_act.types import PyTree
 from jax import numpy as jnp
 
-# Define the layer protocol
-
 class AbstractLayerMixin(ABC):
     """
     The ACT layer based definition. It contains an
@@ -445,65 +443,3 @@ class _ACTValidationWrapper:
             self._validate_all_act_updates_committed(controller, context_message)
         self._execute_validation(validate)
         return update
-
-
-
-
-
-def execute_act(layer: ACTLayerProtocol,
-                initial_state: PyTree,
-                check_for_errors: bool = True,
-                *args,
-                **kwargs,
-                ) -> Tuple[ACT_Controller, PyTree]:
-    """
-
-    Runs a compilable act process so long as the provided
-    layer follows the ACTLayerProtocol and an initial state
-    is provided. Optionally, suppress errors.
-
-    ---- Responsibilities and contract ----
-
-    This function promises to execute a 'jittable' formulation of adaptive
-    computation time (act) when given a layer that follows the ACT Layer Protocol.
-
-    Conceptually, the responsibility of the function is to provide a loop
-    that can be 'jitted', and to provide reasonable sanity checking regarding
-    adherence to the ACT Layey Protocol.
-
-    The layer conforming to the ACT Layer Protocol must in turn perform the
-    actual act update process.
-
-    The function, when not encountering errors, behaves like the following python equivalent code:
-
-    ```
-    def execute_act(layer, initial_state, *args, **kwargs):
-        controller = controller.make_controller(initial_state, *args, **kwargs)
-        state = initial_state
-        while not controller.is_halted:
-            controller, state = layer.run_layer(controller, state)
-        return controller, state
-    ```
-
-    --- fulfilling the ACTLayerProtocol contract ---
-
-    See the protocol object and methods for details on how to fufill this contract.
-
-
-    :param layer: A layer implementing the ACTLayerProtocol
-    :param initial_state: The initial state. Usually just a tensor, but can be a pytree if desired.
-    :param check_for_errors: Whether to check for errors or charge ahead blindly.
-    :param *args: Any args to pass into make_controller
-    :param **kwargs: Any keyword args to pass into make_controller.
-    :return: A controller with the results stored in it, and the final state.
-    """
-    act_layer = _ACTValidationWrapper(layer, check_for_errors)
-    controller = act_layer.make_controller(initial_state, *args, **kwargs)
-
-    wrapped_state = (controller, initial_state)
-    run_layer = _while_loop_adapter_factory(act_layer)
-    controller, final_state = jax.lax.while_loop(_is_act_not_complete,
-                                                 run_layer,
-                                                 wrapped_state
-                                                 )
-    return controller, final_state
