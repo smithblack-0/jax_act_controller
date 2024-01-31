@@ -10,34 +10,36 @@ of framework, and which can still be compiled.
 from typing import Tuple, Callable, Protocol, Any
 
 import jax.lax
+from abc import ABC, abstractmethod
 from src.jax_act import utils
 from src.jax_act.controller import ACT_Controller
 from src.jax_act.types import PyTree
 from jax import numpy as jnp
 
 # Define the layer protocol
-class ACTLayerProtocol(Protocol):
+
+class AbstractLayerMixin(ABC):
     """
-    The ACT layer protocol definition. Defines what is
-    needed from a layer in order to be usable in an
-    act function.
+    The ACT layer based definition. It contains an
+    object-oriented, layer-based version of the act process, and
+    will assist the user by providing act support methods when
+    mixed into an existing framework.
 
     ----- methods ----
 
-    Two methods must be implemented by a class
-    satisfying this protocol. These are:
+    * make_controller: ABSTRACT. returns a valid controller instance
+    * run_iteration: ABSTRACT. Runs a single act layer, and caches then commits the accumulated features.
+    * get_builder: CONCRETE: Call this with appropriate parameters to go get a builder working.
 
-    * make_controller: returns a valid controller instance
-    * run_layer: Runs a single act layer, and caches then commits the accumulated features.
+    * run_act: CONCRETE. Call this with appropriate parameters to use the layer.
 
-    ---- Responsibilities and Contract ----
+    ----- Contract -----
 
-    To fill out it's promise, the layer implementing the ACT Layer Protocol must
-
-    1) Create a controller when asked of it using make_controller, using the initial state and any
-       construction flags
-    2) Run a single act layer when run_layer is called, and return an updated controller and an updated
-       state.
+    This abstract layer will form the following contract with you, the
+    programmer. So long as you implement make_controller such that it returns a
+    valid controller, and then implement run_iteration such that it will accept
+    and return controller and state, this class will promise to handle loops
+    and other details when one of its primary utility method is run.
 
     ---- Responsibility details: make_controller ----
 
@@ -53,9 +55,9 @@ class ACTLayerProtocol(Protocol):
 
     See the method for a full list of contract requirements.
 
-    ---- Responsibilities details: run_layer ----
+    ---- Responsibilities details: run_iteration ----
 
-    The purpose of run_layer is to accept the current state and
+    The purpose of run_iteration is to accept the current state and
     run an act update. Minimal restrictions are placed on the coder
     to allow full flexibility.
 
@@ -89,6 +91,8 @@ class ACTLayerProtocol(Protocol):
     the contract.
 
     '''
+    TODO: Update code example
+
     from jax_act import ControllerBuilder, ACT_Controller
     from jax import numpy as jnp
 
@@ -129,10 +133,8 @@ class ACTLayerProtocol(Protocol):
             controller = controller.iterate_act(halting_probabilities)
             return controller, state
     ```
-
-
-
     """
+    @abstractmethod
     def make_controller(self,
                         initial_state: PyTree,
                         *args,
@@ -164,8 +166,7 @@ class ACTLayerProtocol(Protocol):
         :return: An ACT_Controller instance with one or more accumulators.
         """
         raise NotImplementedError()
-
-    def run_layer(self,
+    def run_iteration(self,
                   controller: ACT_Controller,
                   state: PyTree,
                   ) -> Tuple[ACT_Controller, PyTree]:

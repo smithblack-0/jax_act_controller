@@ -131,14 +131,6 @@ class ACT_Controller(Immutable):
     def has_cached_updates(self)->bool:
         return any([self.state.updates[key] is not None for key in self.state.updates])
 
-    # Minor validation logic
-
-    @staticmethod
-    @checkify.checkify
-    def validate_probability(probabilities: jnp.ndarray):
-        checkify.check(~jnp.any(probabilities > 1.0), "Probabilities exceeded one on some elements")
-        checkify.check(~jnp.any(probabilities < 0.0), "Probabilities less than zero on some elements")
-
     # Helper logic
     def _process_probabilities(self,
                                halting_probabilities: jnp.ndarray
