@@ -174,7 +174,7 @@ class testValidation(unittest.TestCase):
                 builder = builder.define_accumulator_by_shape("test", [batch_shape, 2])
                 return builder.build()
 
-            def run_layer(self,
+            def run_iteration(self,
                           controller: ACT_Controller,
                           state: PyTree,
                           *args,
@@ -198,7 +198,7 @@ class testValidation(unittest.TestCase):
                 builder = builder.define_accumulator_by_shape("test", [*batch_shape, 7, 3])
                 return builder.build()
 
-            def run_layer(self,
+            def run_iteration(self,
                           controller: ACT_Controller,
                           state: PyTree,
                           ) -> Tuple[ACT_Controller, PyTree]:
@@ -224,7 +224,7 @@ class testValidation(unittest.TestCase):
                 builder = builder.define_accumulator_by_shape("test", [batch_shape, 2])
                 return builder.build()
 
-            def run_layer(self,
+            def run_iteration(self,
                           controller: ACT_Controller,
                           state: PyTree,
                           ) -> Tuple[ACT_Controller, PyTree]:
@@ -258,7 +258,6 @@ class test_AbstractLayerMixin(unittest.TestCase):
         def update_state(self, state: jnp.ndarray) -> jnp.ndarray:
             # Mock function
             return state + 0.1*jnp.ones_like(state)
-
         def make_probabilities(self, state: jnp.ndarray) -> jnp.ndarray:
             # Mock function
             batch_shape = state.shape[0]
@@ -293,8 +292,11 @@ class test_AbstractLayerMixin(unittest.TestCase):
             return controller, state
         def __call__(self, state: jnp.ndarray):
             return self.execute_act(state)
+        def __init__(self, embedding_dim: int):
+            self.embedding_dim = embedding_dim
     def test_act(self):
-        layer = self.ACTLayer()
+        embedding_dim = 10
+        layer = self.ACTLayer(embedding_dim)
         initial_state = jnp.zeros([7])
         controller, state = layer(initial_state)
 

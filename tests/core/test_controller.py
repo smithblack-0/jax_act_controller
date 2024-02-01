@@ -494,6 +494,32 @@ class test_main_logic(unittest.TestCase):
         self.assertTrue(jnp.all(expected_residuals == new_controller.residuals))
         self.assertTrue(utils.are_pytrees_equal(expected_accumulators, new_controller.accumulators))
 
+class test_magic(unittest.TestCase):
+    """
+    Test that certain important magic methods work
+    """
+    def make_mock_state(self)->ACTStates:
+        act_state = ACTStates(0.001,
+                              jnp.array([0, 0]),
+                              jnp.array([0.0, 0.0]),
+                              jnp.array([0.0, 0.0]),
+                              {"item" : jnp.array([0.0, 0.2])},
+                              {"item" : jnp.array([0.0, 0.3])},
+                              {"item" : None}
+
+        )
+        return act_state
+    def test_get_item(self):
+
+        mock_state = self.make_mock_state()
+        controller = ACT_Controller(mock_state)
+
+        # Test works on valid access
+        controller["item"]
+
+        # Test does not work on invalid acces
+        with self.assertRaises(KeyError):
+            controller["item2"]
 class test_jit(unittest.TestCase):
     """
     Test that the controller object can be integrated as a jitted object

@@ -11,6 +11,7 @@ framework is built on top of jax, it should hopefully work.
 
 from typing import Tuple, Callable, Protocol, Any
 
+import flax.core.lift
 import jax.lax
 from abc import ABC, abstractmethod
 from src.jax_act import utils
@@ -155,16 +156,13 @@ class AbstractLayerMixin(ABC):
 
     @staticmethod
     def _while_loop_adapter_factory(layer: '_ACTValidationWrapper'
-                                    ) -> Callable[
-        [Tuple[ACT_Controller, PyTree]],
-        Tuple[ACT_Controller, PyTree]
-    ]:
+                                    ) -> Callable[[Tuple[ACT_Controller, PyTree]],
+                                                  Tuple[ACT_Controller, PyTree]]:
         """
         This is primarily an interface between the
         jax.lax.while_loop restrictions and how
         items are passed around to users.
         """
-
         def run_layer_adapter(state: Tuple[ACT_Controller, PyTree]
                               ) -> Tuple[ACT_Controller, PyTree]:
             controller, state = state
@@ -296,7 +294,6 @@ class AbstractLayerMixin(ABC):
                                                      wrapped_state
                                                      )
         return controller, final_state
-
 
 class _ACTValidationWrapper:
     """

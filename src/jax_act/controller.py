@@ -428,6 +428,9 @@ class ACT_Controller(Immutable):
     @classmethod
     def load(cls, state: ACTStates)->'ACT_Controller':
         return cls(state)
+
+    def __getitem__(self, item: str)->PyTree:
+        return self.accumulators[item]
     def __init__(self, state: ACTStates):
         super().__init__()
         self.state = state

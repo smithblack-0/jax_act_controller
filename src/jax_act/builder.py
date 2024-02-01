@@ -515,6 +515,24 @@ class ControllerBuilder(Immutable):
         self.state = state
         self.make_immutable()
 
+def new_builder(batch_shape: Union[int, List[int]],
+                core_dtype: Optional[jnp.dtype] = None,
+                epsilon: float = 1e-4,
+                )->'ControllerBuilder':
+        """
+        Creates a new builder you can then
+        edit.
+
+        :param batch_shape: The batch shape. Can be an int, or a list of ints
+        :param core_dtype: The dtype of data
+        :param epsilon: The epsilon for the act threshold. Note that if you are passing this
+                        as a variable, it will need to be a staticargnum when compiled.
+        :return: A StateBuilder instance
+        """
+        return ControllerBuilder.new_builder(batch_shape,
+                                             core_dtype,
+                                             epsilon)
+
 def flatten_builder(builder: ControllerBuilder)->Tuple[Any, Any]:
     state = builder.state
     flat_state, tree_def = jax.tree_util.tree_flatten(state)
@@ -523,5 +541,6 @@ def flatten_builder(builder: ControllerBuilder)->Tuple[Any, Any]:
 def unflatten_builder(aux_data: Any, flat_state: Any)->ControllerBuilder:
     state = jax.tree_util.tree_unflatten(aux_data, flat_state)
     return ControllerBuilder(state)
+
 
 jax.tree_util.register_pytree_node(ControllerBuilder, flatten_builder, unflatten_builder)
