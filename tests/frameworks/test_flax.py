@@ -94,6 +94,7 @@ class test_with_flax(unittest.TestCase):
             def __call__(self, input: jnp.ndarray)->jnp.ndarray:
                 initial_state = self.project_input(input)
                 controller, _ = self.execute_act(initial_state)
+                print(controller.iterations)
                 return controller["output"]
 
         batch_size = 16
@@ -103,7 +104,7 @@ class test_with_flax(unittest.TestCase):
 
         rng = random.key(0)
         key_case, key_retained = random.split(rng)
-        mock_data = jnp.ones([batch_size, input_dim])
+        mock_data = -0.01*jnp.ones([batch_size, input_dim])
         layer_instance = DirectACT(
                                     state_dim = state_dim,
                                     output_dim = output_dim

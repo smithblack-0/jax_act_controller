@@ -160,7 +160,9 @@ class AbstractLayerMixin(ABC):
     # methods must not be static
     @staticmethod
     def _is_act_not_complete(combined_state: Tuple[ACT_Controller, PyTree, Tuple[int, int]]) -> bool:
-        controller, _, _ = combined_state
+        controller, _, (current_iteration, max_iteration) = combined_state
+        if current_iteration == max_iteration:
+            return False
         return ~controller.is_completely_halted
 
     @staticmethod
