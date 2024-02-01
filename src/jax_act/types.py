@@ -1,4 +1,6 @@
 """
+
+
 Definition of what a PyTree is
 
 A PyTree is a nested python structure of
@@ -6,6 +8,8 @@ Tuples, Lists, and Dicts with ndarrays as leaves.
 
 The leaves should be floating tensors.
 
+STABLE: Code in this section will never be modified in a way that breaks backwards
+compatibility
 """
 
 

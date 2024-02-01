@@ -1,3 +1,9 @@
+"""
+STABLE: Code in this section will never be modified in a way that breaks backwards
+compatibility
+"""
+
+
 import jax
 from jax import numpy as jnp
 

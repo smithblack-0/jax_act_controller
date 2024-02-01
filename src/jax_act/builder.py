@@ -1,4 +1,6 @@
 """
+STABLE: Backwards compatibility is guaranteed for this code.
+
 Creation contains the builders and other mechanisms
 needed to create an ACT instance. It also includes
 some degree of error checking.
