@@ -16,7 +16,7 @@ import jax
 from jax import numpy as jnp
 from src.jax_act.builder import ControllerBuilder
 from src.jax_act.controller import ACT_Controller
-from src.jax_act.layers.layers import _ACTValidationWrapper, execute_act
+from src.jax_act.layers import _ACTValidationWrapper, AbstractLayerMixin
 from src.jax_act.types import PyTree
 from typing import Tuple
 
@@ -167,8 +167,8 @@ class testValidation(unittest.TestCase):
 
     def test_make_controller(self):
         """ Test a simple make controller case"""
-        class ValidMakeProtocol():
-            def make_controller(self, state: jnp.ndarray)->ACT_Controller:
+        class ValidLayer(AbstractLayerMixin):
+            def make_controller(self, state: jnp.ndarray, *args, **kwargs)->ACT_Controller:
                 batch_shape = state.shape[0]
                 builder = ControllerBuilder.new_builder(batch_shape)
                 builder = builder.define_accumulator_by_shape("test", [batch_shape, 2])
@@ -177,19 +177,21 @@ class testValidation(unittest.TestCase):
             def run_layer(self,
                           controller: ACT_Controller,
                           state: PyTree,
+                          *args,
+                          **kwargs
                           ) -> Tuple[ACT_Controller, PyTree]:
                 # This is a mockup.
                 return controller, state
 
-        valid_make_protocol = ValidMakeProtocol()
-        valid_instance = _ACTValidationWrapper(valid_make_protocol, True)
+        valid_layer = ValidLayer()
+        valid_instance = _ACTValidationWrapper(valid_layer, True)
         input = jnp.ones([7, 2])
         controller = valid_instance.make_controller(input)
         self.assertIsInstance(controller, ACT_Controller)
 
     def test_make_controller_using_arguments(self):
         """Test make controller works when passing user flags"""
-        class ValidMakeProtocol():
+        class ValidLayer(AbstractLayerMixin):
             def make_controller(self, state: jnp.ndarray, length: int)->ACT_Controller:
                 batch_shape = list(state.shape[0:length])
                 builder = ControllerBuilder.new_builder(batch_shape)
@@ -203,19 +205,19 @@ class testValidation(unittest.TestCase):
                 # This is a mockup.
                 return controller, state
 
-        valid_make_protocol = ValidMakeProtocol()
+        valid_make_protocol = ValidLayer()
         valid_instance = _ACTValidationWrapper(valid_make_protocol, True)
 
         input = jnp.ones([7, 3])
         length = 2
 
-        controller = valid_instance.make_controller(input, 2)
-        controller = valid_instance.make_controller(input, length=2)
+        controller = valid_instance.make_controller(input, length)
+        controller = valid_instance.make_controller(input, length=length)
 
         self.assertIsInstance(controller, ACT_Controller)
     def test_run_layer(self):
 
-        class ValidRunProtocol():
+        class ValidLayer(AbstractLayerMixin):
             def make_controller(self, state: jnp.ndarray)->ACT_Controller:
                 batch_shape = state.shape[0]
                 builder = ControllerBuilder.new_builder(batch_shape)
@@ -234,20 +236,25 @@ class testValidation(unittest.TestCase):
                 controller = controller.iterate_act(halting_probs)
                 return controller, state
 
-        valid_instance = ValidRunProtocol()
+        valid_instance = ValidLayer()
         valid_instance = _ACTValidationWrapper(valid_instance, True)
 
         state = jnp.ones([3])
         controller = valid_instance.make_controller(state)
         self.assertIsInstance(controller, ACT_Controller)
 
-class test_execute_act(unittest.TestCase):
+class test_AbstractLayerMixin(unittest.TestCase):
     """
-    Test execute_act.
+    Test that the abstract layer mixin
+    can be reasonably used to perform
+    the various tasks that may be demanded of it
     """
-
-    class ACTMockLayer:
-
+    class ACTLayer(AbstractLayerMixin):
+        """
+        A pet test layer for testing
+        that the mixin functions properly
+        when it is the only update.
+        """
         def update_state(self, state: jnp.ndarray) -> jnp.ndarray:
             # Mock function
             return state + 0.1*jnp.ones_like(state)
@@ -262,15 +269,19 @@ class test_execute_act(unittest.TestCase):
             batch_shape = state.shape[0]
             return 0.1 * jnp.ones([batch_shape, self.embedding_dim])
 
-        def make_controller(self, state: jnp.ndarray) -> ACT_Controller:
+        def make_controller(self, state: jnp.ndarray, *args, **kwargs) -> ACT_Controller:
             batch_shape = state.shape[0]
             builder = ControllerBuilder.new_builder(batch_shape)
             builder = builder.define_accumulator_by_shape("state", list(state.shape))
             builder = builder.define_accumulator_by_shape("output", [batch_shape, self.embedding_dim])
             return builder.build()
 
-        def run_layer(self, controller: ACT_Controller, state: jnp.ndarray
-                      ) -> Tuple[ACT_Controller, jnp.ndarray]:
+        def run_iteration(self,
+                          controller: ACT_Controller,
+                          state: jnp.ndarray,
+                          *args,
+                          **kwargs) -> Tuple[ACT_Controller, jnp.ndarray]:
+
             state = self.update_state(state)
             output = self.make_output(state)
             probs = self.make_probabilities(state)
@@ -280,39 +291,10 @@ class test_execute_act(unittest.TestCase):
             controller = controller.iterate_act(probs)
 
             return controller, state
+        def __call__(self, state: jnp.ndarray):
+            return self.execute_act(state)
+    def test_act(self):
+        layer = self.ACTLayer()
+        initial_state = jnp.zeros([7])
+        controller, state = layer(initial_state)
 
-        def __init__(self,
-                     embedding_dim: int = 10,
-                     ):
-            self.embedding_dim = embedding_dim
-    def get_layer(self, embedding_dim: int)->'ACTMockLayer':
-        return self.ACTMockLayer(embedding_dim)
-
-    def test_execute_act(self):
-        """ Test that a valid instance of execute act will work"""
-        batch_dim = 10
-        embedding_dim = 12
-
-        initial_state = jnp.zeros([batch_dim, embedding_dim])
-        layer = self.get_layer(embedding_dim)
-
-        controller, state = execute_act(layer,
-                                        initial_state)
-        self.assertTrue(jnp.all(initial_state != state))
-    def test_execute_act_jit(self):
-        """ Test that a valid instance of execute act will work under jit"""
-        batch_dim = 10
-        embedding_dim = 12
-
-        initial_state = jnp.zeros([batch_dim, embedding_dim])
-        layer = self.get_layer(embedding_dim)
-        def execute_act_jit_helper(state):
-            # Jit does not like passing around layers
-            #
-            # However, as users are usually going to be passing
-            # in the layers from self, it should be fine.
-            return execute_act(layer, state)
-
-        jit_function = jax.jit(execute_act_jit_helper)
-        controller, state = jit_function(initial_state)
-        self.assertTrue(jnp.all(initial_state != state))

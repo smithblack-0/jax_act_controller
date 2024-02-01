@@ -1,10 +1,12 @@
 """
-The ACT layer protocol and usage definition.
+The ACT layer mixin definition
 
-This defines the protocol for making a layer that
-can easily be incorporated into an act process regardless
-of framework, and which can still be compiled.
+The mixin and nearby error handling code
+is designed to support a programmer attempting to integrate
+their project into a specific layer-oriented framework.
 
+It is suppose to be fairly framework-agnostic: So long as the
+framework is built on top of jax, it should hopefully work.
 """
 
 from typing import Tuple, Callable, Protocol, Any
@@ -30,6 +32,7 @@ class AbstractLayerMixin(ABC):
     * get_builder: CONCRETE: Call this with appropriate parameters to go get a builder working.
 
     * run_act: CONCRETE. Call this with appropriate parameters to use the layer.
+
 
     ----- Contract -----
 
