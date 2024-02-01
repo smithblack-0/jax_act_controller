@@ -149,13 +149,15 @@ class AbstractLayerMixin(ABC):
 
     ```
     """
-    @staticmethod
-    def _is_act_not_complete(combined_state: Tuple[ACT_Controller, PyTree]) -> bool:
+    # NOTE: For framework compatibility reasons, these
+    # methods must not be static
+    def _is_act_not_complete(self, combined_state: Tuple[ACT_Controller, PyTree]) -> bool:
         controller, _ = combined_state
         return ~controller.is_completely_halted
 
-    @staticmethod
-    def _while_loop_adapter_factory(layer: '_ACTValidationWrapper'
+
+    def _while_loop_adapter_factory(self,
+                                    layer: '_ACTValidationWrapper'
                                     ) -> Callable[[Tuple[ACT_Controller, PyTree]],
                                                   Tuple[ACT_Controller, PyTree]]:
         """
@@ -166,7 +168,7 @@ class AbstractLayerMixin(ABC):
         def run_layer_adapter(state: Tuple[ACT_Controller, PyTree]
                               ) -> Tuple[ACT_Controller, PyTree]:
             controller, state = state
-            controller, state = layer.run_layer(controller, state)
+            controller, state = layer.run_iteration(controller, state)
             return controller, state
 
         return run_layer_adapter
@@ -237,6 +239,12 @@ class AbstractLayerMixin(ABC):
         """
         raise NotImplementedError()
 
+    def execute_while_loop(self,
+                           cond_function: Callable[[ Tuple[ACT_Controller, PyTree]], bool],
+                           body_function: Callable[[ Tuple[ACT_Controller, PyTree]],  Tuple[ACT_Controller, PyTree]],
+                           initial_state:  Tuple[ACT_Controller, PyTree]
+                           )-> Tuple[ACT_Controller, PyTree]:
+        return jax.lax.while_loop(cond_function, body_function, initial_state)
     def execute_act(self,
                     initial_state: PyTree,
                     check_for_errors: bool = True,
@@ -289,10 +297,9 @@ class AbstractLayerMixin(ABC):
 
         wrapped_state = (controller, initial_state)
         run_layer = self._while_loop_adapter_factory(act_layer)
-        controller, final_state = jax.lax.while_loop(self._is_act_not_complete,
-                                                     run_layer,
-                                                     wrapped_state
-                                                     )
+        controller, final_state = self.execute_while_loop(self._is_act_not_complete,
+                                                          run_layer,
+                                                          wrapped_state)
         return controller, final_state
 
 class _ACTValidationWrapper:
@@ -439,15 +446,15 @@ class _ACTValidationWrapper:
         return controller
 
 
-    def run_layer(self,
-                  controller: ACT_Controller,
-                  state: PyTree
-                  ) -> Tuple[ACT_Controller, PyTree]:
+    def run_iteration(self,
+                      controller: ACT_Controller,
+                      state: PyTree
+                      ) -> Tuple[ACT_Controller, PyTree]:
 
         update = self.layer.run_iteration(controller, state)
         def validate():
             # Perform return formatting validation
-            context_message = "An issue occurred while validating the execution of run_layer"
+            context_message = "An issue occurred while validating the execution of run_iteration"
             self._validate_is_tuple(update, context_message)
             self._validate_length_two(update, context_message)
 
