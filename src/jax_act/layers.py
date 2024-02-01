@@ -156,14 +156,15 @@ class AbstractLayerMixin(ABC):
 
     ```
     """
-    # NOTE: For framework compatibility reasons, these
-    # methods must not be static
     @staticmethod
     def _is_act_not_complete(combined_state: Tuple[ACT_Controller, PyTree, Tuple[int, int]]) -> bool:
+        # I hate how fudly boolean logic is when using jax
+        #
+        # WHY must I always use logical_...
         controller, _, (current_iteration, max_iteration) = combined_state
-        if current_iteration == max_iteration:
-            return False
-        return ~controller.is_completely_halted
+        condition = ~controller.is_completely_halted
+        condition = jnp.logical_and(condition, current_iteration < max_iteration)
+        return condition
 
     @staticmethod
     def _while_loop_adapter_factory(layer: '_ACTValidationWrapper'

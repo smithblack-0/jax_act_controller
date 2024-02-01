@@ -33,11 +33,12 @@ class test_with_flax(unittest.TestCase):
             # Hyperparameters
             state_dim: int
             output_dim: int
-
+            max_iterations: int = 10
             # Setup. We cannot do inline setup
             def setup(self) -> None:
                 self.project_input = nn.Dense(self.state_dim)
                 self.project_state = nn.Dense(self.state_dim)
+                self.state_layernorm = nn.LayerNorm(self.state_dim)
                 self.project_output = nn.Dense(self.output_dim)
                 self.project_probs = nn.Dense(1)
             def update_state(self, state: jnp.ndarray)->jnp.ndarray:
@@ -47,7 +48,7 @@ class test_with_flax(unittest.TestCase):
                 :return: The new state
                 """
                 new_state = self.project_state(state)
-                state = nn.relu(new_state + state)
+                state = self.state_layernorm(new_state + state)
                 return state
 
             def make_output(self, state: jnp.ndarray)->jnp.ndarray:
@@ -93,8 +94,8 @@ class test_with_flax(unittest.TestCase):
             @nn.compact
             def __call__(self, input: jnp.ndarray)->jnp.ndarray:
                 initial_state = self.project_input(input)
-                controller, _ = self.execute_act(initial_state)
-                print(controller.iterations)
+                controller, state = self.execute_act(initial_state,
+                                                     max_iterations=self.max_iterations)
                 return controller["output"]
 
         batch_size = 16
@@ -104,7 +105,7 @@ class test_with_flax(unittest.TestCase):
 
         rng = random.key(0)
         key_case, key_retained = random.split(rng)
-        mock_data = -0.01*jnp.ones([batch_size, input_dim])
+        mock_data = 1.0*jnp.ones([batch_size, input_dim])
         layer_instance = DirectACT(
                                     state_dim = state_dim,
                                     output_dim = output_dim

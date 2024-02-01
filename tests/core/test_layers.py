@@ -175,6 +175,8 @@ class testValidation(unittest.TestCase):
                 builder = builder.define_accumulator_by_shape("test", [batch_shape, 2])
                 return builder.build()
 
+            def setup_state(self, controller: ACT_Controller, state: PyTree):
+                pass
             def run_iteration(self,
                           controller: ACT_Controller,
                           state: PyTree,
@@ -198,7 +200,8 @@ class testValidation(unittest.TestCase):
                 builder = ControllerBuilder.new_builder(batch_shape)
                 builder = builder.define_accumulator_by_shape("test", [*batch_shape, 7, 3])
                 return builder.build()
-
+            def setup_state(self, controller: ACT_Controller, state: PyTree):
+                pass
             def run_iteration(self,
                           controller: ACT_Controller,
                           state: PyTree,
@@ -224,7 +227,8 @@ class testValidation(unittest.TestCase):
                 builder = ControllerBuilder.new_builder(batch_shape)
                 builder = builder.define_accumulator_by_shape("test", [batch_shape, 2])
                 return builder.build()
-
+            def setup_state(self, controller: ACT_Controller, state: PyTree):
+                pass
             def run_iteration(self,
                           controller: ACT_Controller,
                           state: PyTree,
@@ -263,7 +267,8 @@ class test_AbstractLayerMixin(unittest.TestCase):
             # Mock function
             batch_shape = state.shape[0]
             return 0.1 * jnp.ones([batch_shape])
-
+        def setup_state(self, controller: ACT_Controller, state: PyTree):
+            pass
         def make_output(self, state: jnp.ndarray) -> jnp.ndarray:
             # Mock function
             batch_shape = state.shape[0]
