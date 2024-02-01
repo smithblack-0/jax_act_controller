@@ -23,6 +23,7 @@ from src.jax_act.types import PyTree
 from jax import numpy as jnp
 
 class AbstractLayerMixin(ABC):
+    #TODO: update comments to talk about max_iterations
     """
     The ACT layer based definition. It contains an
     object-oriented, layer-based version of the act process, and
