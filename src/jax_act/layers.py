@@ -1,4 +1,7 @@
 """
+EXPERIMENTAL: This module is experimental. No guarentee is yet made that
+new versions will not break your existing code.
+
 The ACT layer mixin definition
 
 The mixin and nearby error handling code
@@ -28,12 +31,16 @@ class AbstractLayerMixin(ABC):
 
     ----- methods ----
 
+    Contract:
+
     * make_controller: ABSTRACT. returns a valid controller instance
     * run_iteration: ABSTRACT. Runs a single act layer, and caches then commits the accumulated features.
+    * setup_state: ABSTRACT. Can be used to handle any state details.
+    * execute_act: CONCRETE. Call this with appropriate parameters to use the layer.
+
+    Utility:
+
     * get_builder: CONCRETE: Call this with appropriate parameters to go get a builder working.
-
-    * run_act: CONCRETE. Call this with appropriate parameters to use the layer.
-
 
     ----- Contract -----
 
@@ -151,27 +158,28 @@ class AbstractLayerMixin(ABC):
     """
     # NOTE: For framework compatibility reasons, these
     # methods must not be static
-    def _is_act_not_complete(self, combined_state: Tuple[ACT_Controller, PyTree]) -> bool:
-        controller, _ = combined_state
+    @staticmethod
+    def _is_act_not_complete(combined_state: Tuple[ACT_Controller, PyTree, Tuple[int, int]]) -> bool:
+        controller, _, _ = combined_state
         return ~controller.is_completely_halted
 
-
-    def _while_loop_adapter_factory(self,
-                                    layer: '_ACTValidationWrapper'
-                                    ) -> Callable[[Tuple[ACT_Controller, PyTree]],
-                                                  Tuple[ACT_Controller, PyTree]]:
+    @staticmethod
+    def _while_loop_adapter_factory(layer: '_ACTValidationWrapper'
+                                    ) -> Callable[[Tuple[ACT_Controller, PyTree, Tuple[int, int]]],
+                                                  Tuple[ACT_Controller, PyTree, Tuple[int, int]]]:
         """
         This is primarily an interface between the
         jax.lax.while_loop restrictions and how
         items are passed around to users.
         """
-        def run_layer_adapter(state: Tuple[ACT_Controller, PyTree]
-                              ) -> Tuple[ACT_Controller, PyTree]:
-            controller, state = state
+        def run_layer_adapter(state: Tuple[ACT_Controller, PyTree, Tuple[int, int]]
+                              ) -> Tuple[ACT_Controller, PyTree, Tuple[int, int]]:
+            controller, state, (current_iteration, max_iteration) = state
             controller, state = layer.run_iteration(controller, state)
-            return controller, state
+            return controller, state, (current_iteration + 1, max_iteration)
 
         return run_layer_adapter
+
     @abstractmethod
     def make_controller(self,
                         initial_state: PyTree,
@@ -204,7 +212,21 @@ class AbstractLayerMixin(ABC):
         :return: An ACT_Controller instance with one or more accumulators.
         """
         raise NotImplementedError()
+    @abstractmethod
+    def setup_state(self, controller: ACT_Controller, state: PyTree):
+        """
+        A piece of the contract protocol
 
+        Some frameworks, such as flax, require a single run to be
+        executed when certain state entries such as parameters are not
+        yet immutable.
+
+        Any state tweaking that is needed to get ready for the
+        while loop should be placed here.
+
+        This will be called before the while loop starts executing
+        """
+        raise NotImplementedError()
     @abstractmethod
     def run_iteration(self,
                   controller: ACT_Controller,
@@ -239,15 +261,10 @@ class AbstractLayerMixin(ABC):
         """
         raise NotImplementedError()
 
-    def execute_while_loop(self,
-                           cond_function: Callable[[ Tuple[ACT_Controller, PyTree]], bool],
-                           body_function: Callable[[ Tuple[ACT_Controller, PyTree]],  Tuple[ACT_Controller, PyTree]],
-                           initial_state:  Tuple[ACT_Controller, PyTree]
-                           )-> Tuple[ACT_Controller, PyTree]:
-        return jax.lax.while_loop(cond_function, body_function, initial_state)
     def execute_act(self,
                     initial_state: PyTree,
                     check_for_errors: bool = True,
+                    max_iterations: int = 10,
                     *args,
                     **kwargs,
                     ) -> Tuple[ACT_Controller, PyTree]:
@@ -294,12 +311,14 @@ class AbstractLayerMixin(ABC):
         """
         act_layer = _ACTValidationWrapper(self, check_for_errors)
         controller = act_layer.make_controller(initial_state, *args, **kwargs)
+        iterations = (0, max_iterations)
+        self.setup_state(controller, initial_state)
 
-        wrapped_state = (controller, initial_state)
+        wrapped_state = (controller, initial_state, iterations)
         run_layer = self._while_loop_adapter_factory(act_layer)
-        controller, final_state = self.execute_while_loop(self._is_act_not_complete,
-                                                          run_layer,
-                                                          wrapped_state)
+        controller, final_state, _ = jax.lax.while_loop(self._is_act_not_complete,
+                                                      run_layer,
+                                                      wrapped_state)
         return controller, final_state
 
 class _ACTValidationWrapper:
