@@ -19,7 +19,8 @@ class test_ACTState(unittest.TestCase):
                                   jnp.array([0.0, 0.0]),
                                   {},
                                   {},
-                                  {}
+                                  {},
+                                  1.0
 
             )
             return act_state

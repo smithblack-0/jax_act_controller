@@ -23,6 +23,8 @@ class ErrorModes(Enum):
     standard = 'standard'
     silence = 'silence'
 
+#TODO:
+# - Add editor for depressionconstant state.
 class TensorEditor(Immutable):
     f"""
     ---- Purpose ----

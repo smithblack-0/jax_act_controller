@@ -1,4 +1,4 @@
-from .builder import ControllerBuilder, new_builder
+from .builder import ControllerBuilder
 from .controller import ACT_Controller
 from .states import ACTStates
 from .viewer import ACTViewer

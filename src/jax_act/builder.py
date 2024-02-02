@@ -68,9 +68,10 @@ class ControllerBuilder(Immutable):
     ---- How to Use: Controller Creation ----
 
     If you want to create a controller in the first place, you will be wanting
-    to use the new_builder method. Define the shape of the batch, or shape
+    to use the new_builder class method. Define the shape of the batch, or shape
     of the tensors, and the dtype of the probabilities. Your controller is
-    returned, and is explicitly bound to the provided batch shape.
+    returned, and is explicitly bound to the provided batch shape. You also
+    have the option to define the depression constant, if any, here.
 
     Now, you need to setup the features you wish to accumulate. Usually, they
     are simply tensors, but if you want you can accumulate PyTrees. See jax
@@ -80,15 +81,6 @@ class ControllerBuilder(Immutable):
     and default values for your accumulators.
 
     Once you are ready, call .build() to create a controller. Off you go!
-
-    Generally, you can use this in one of a few ways.
-
-    First, and most importantly, do NOT use the constructor directly. You
-    should always use either the new_builder method or the edit_controller
-    You can use the builder to setup a act controller in the first
-    place. You start
-
-
     ---- properties ----
 
     epsilon: The epsilon used to compute the halt threshold
@@ -99,16 +91,6 @@ class ControllerBuilder(Immutable):
     accumulators: The existing accumulators and their values.
     updates: The existing updates and their values.
 
-    ---- instance methods ----
-
-    These methods will get you an instance so you can start building
-    or editing.
-
-    new_builder: Creates your first builder instance to work with
-    redefine_controller: Creates a builder from the existing controller state
-    redefine_save: Creates a builder from any .save state produced by a class
-                from act objects.
-
     ---- configuration methods ---
 
     These methods will produce new instances in which the accumulators
@@ -117,26 +99,6 @@ class ControllerBuilder(Immutable):
     define_accumulator_directly: Use to directly define the initial values of an act accumulator
     define_accumulator_by_shape: Use to define an act accumulator by shape and dtype.
     delete_definition: Use to remove an accumulator from the controller.
-
-    ---- manual methods ----
-
-    These methods will allow you to manually set the contents of key tensors
-
-    Editing the tensors with these generally requires a really strong understanding
-    of how the class runs under the hood.
-
-    However, some safeguards are present. You cannot replace a tensor or tensor collection
-    with a tensor or tensor collection of a different shape or dtype
-
-    set_probabilities: Manually replace the probabilities
-    set_iterations: Manually redefine the number of iterations statistics container
-    set_residuals: Manually redefine the residuals to be particular entities
-    set_epsilon: Manually change the epsilon to another floating value.
-    set_accumulator: Manually redefine the value of the collection in an accumulator
-    set_defaults: Manually redefine what the defaults tensor or tensor collection looks like for
-                  an accumulator
-    set_updates: Manually set an update accumulator to a valid choice.
-
 
     ---- Example: Configure for a vanilla ACT instance ---
 
@@ -173,10 +135,6 @@ class ControllerBuilder(Immutable):
 
     ```
     """
-
-    # TODO:
-    #    - Add support in new_builder for explictly passing
-    #
     @property
     def epsilon(self)->float:
         return self.state.epsilon
@@ -457,6 +415,7 @@ class ControllerBuilder(Immutable):
                     batch_shape: Union[int, List[int]],
                     core_dtype: Optional[jnp.dtype] = None,
                     epsilon: float = 1e-4,
+                    depression_constant: float = 1.0
                     )->'ControllerBuilder':
         """
         Creates a new builder you can then
@@ -466,7 +425,7 @@ class ControllerBuilder(Immutable):
         :param core_dtype: The dtype of data
         :param epsilon: The epsilon for the act threshold. Note that if you are passing this
                         as a variable, it will need to be a staticargnum when compiled.
-        :return: A StateBuilder instance
+        :return: A Builder instance
         """
         context_error_message = "An issue occurred while creating a new builder:"
 
@@ -495,6 +454,7 @@ class ControllerBuilder(Immutable):
             accumulators=accumulators,
             defaults=defaults,
             updates=updates,
+            depression_constant=depression_constant
         )
 
         return cls(state)
@@ -518,24 +478,6 @@ class ControllerBuilder(Immutable):
         super().__init__()
         self.state = state
         self.make_immutable()
-
-def new_builder(batch_shape: Union[int, List[int]],
-                core_dtype: Optional[jnp.dtype] = None,
-                epsilon: float = 1e-4,
-                )->'ControllerBuilder':
-        """
-        Creates a new builder you can then
-        edit.
-
-        :param batch_shape: The batch shape. Can be an int, or a list of ints
-        :param core_dtype: The dtype of data
-        :param epsilon: The epsilon for the act threshold. Note that if you are passing this
-                        as a variable, it will need to be a staticargnum when compiled.
-        :return: A StateBuilder instance
-        """
-        return ControllerBuilder.new_builder(batch_shape,
-                                             core_dtype,
-                                             epsilon)
 
 def flatten_builder(builder: ControllerBuilder)->Tuple[Any, Any]:
     state = builder.state

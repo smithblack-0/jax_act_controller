@@ -22,6 +22,7 @@ def make_empty_state_mockup() -> ACTStates:
         updates=None,
         probabilities=None,
         residuals=None,
+        depression_constant=None
     )
 
 class test_properties(unittest.TestCase):
@@ -47,6 +48,7 @@ class test_properties(unittest.TestCase):
             updates=None,
             probabilities = None,
             residuals = None,
+            depression_constant=None
             )
     def test_residuals(self):
         """ Test if residuals are being read properly"""
@@ -134,24 +136,6 @@ class test_private_helpers(unittest.TestCase):
     We mock up data to represent a condition, then see if the
     helpers act appropriately to produce a new state
     """
-    def test_validate_probabilities(self):
-        """ Test that probabilities are validated as expected"""
-
-        # Test we raise when too high
-
-
-        with self.assertRaises(checkify.JaxRuntimeError):
-            err, _ = ACT_Controller.validate_probability(jnp.array([0, 3.0]))
-            err.throw()
-
-        # Test we raise when too low
-        with self.assertRaises(checkify.JaxRuntimeError):
-            err, _ = ACT_Controller.validate_probability(jnp.array([0, -1.0]))
-            err.throw()
-
-        # Test we do not raise under valid conditions
-        err, _ = ACT_Controller.validate_probability(jnp.array([0, 0.3]))
-        err.throw()
     def test_process_probabilities(self):
         """ Test that probability processing is acting as expected"""
 
@@ -169,20 +153,32 @@ class test_private_helpers(unittest.TestCase):
         state = make_empty_state_mockup()
         state = state.replace(epsilon=epsilon,
                               probabilities=probabilities,
-                              residuals=residuals)
+                              residuals=residuals,
+                              depression_constant=1.0)
 
         expected_probabilities = jnp.array([0.7, 0.7, 1.0])
         expected_halting_probabilities = jnp.array([0.3, 0.5, 0.3])
         expected_residuals = jnp.array([0.0, 0.0, 0.3])
 
+        # We get the results
         controller = ACT_Controller(state)
         halting_probs, residuals, probabilities = controller._process_probabilities(
                                                                 halting_probs
                                                                 )
 
+        # Now we reduce the depression constant to half. This should half how much
+        # halting probability increases for channel 0
+
+        state = state.replace(depression_constant=0.5)
+        controller = ACT_Controller(state)
+        depressed_halting_probs, _, _ = controller._process_probabilities(halting_probs)
+
+        print(halting_probs)
+        print(depressed_halting_probs)
         self.assertTrue(jnp.allclose(halting_probs, expected_halting_probabilities))
         self.assertTrue(jnp.allclose(probabilities, expected_probabilities))
         self.assertTrue(jnp.allclose(residuals, expected_residuals))
+        self.assertEqual(2*depressed_halting_probs[0], halting_probs[0])
     def test_update_accumulators(self):
         """ Test that update accumulators works in simple and pytree cases"""
 
@@ -327,7 +323,8 @@ class test_main_logic(unittest.TestCase):
                                         residuals=residuals,
                                         probabilities=probabilities,
                                         accumulators=accumulator,
-                                        updates=update)
+                                        updates=update,
+                                        depression_constant=1.0)
 
         # Test that we detect halting probabilities are the wrong shape
 
@@ -409,7 +406,8 @@ class test_main_logic(unittest.TestCase):
                                         residuals=residuals,
                                         probabilities=probabilities,
                                         accumulators=accumulator,
-                                        updates=update)
+                                        updates=update,
+                                        depression_constant=1.0)
 
         # The first halting probability should not be clamped. The second should be clamped to
         # 0.5, and the third should be clamped to zero.
@@ -435,7 +433,6 @@ class test_main_logic(unittest.TestCase):
         controller = ACT_Controller(mock_state)
         new_controller = controller.iterate_act(halting_probabilities)
 
-        print(new_controller)
         self.assertTrue(jnp.all(new_controller.iterations == expected_iterations))
         self.assertTrue(jnp.allclose(new_controller.probabilities, expected_probabilities))
         self.assertTrue(jnp.allclose(new_controller.residuals, expected_residuals))
@@ -508,7 +505,8 @@ class test_magic(unittest.TestCase):
                               jnp.array([0.0, 0.0]),
                               {"item" : jnp.array([0.0, 0.2])},
                               {"item" : jnp.array([0.0, 0.3])},
-                              {"item" : None}
+                              {"item" : None},
+                              1.0,
 
         )
         return act_state
@@ -534,7 +532,8 @@ class test_jit(unittest.TestCase):
                               jnp.array([0.0, 0.0]),
                               {"item" : jnp.array([0.0, 0.2])},
                               {"item" : jnp.array([0.0, 0.3])},
-                              {"item" : None}
+                              {"item" : None},
+                              1.0,
 
         )
         return act_state
@@ -631,7 +630,8 @@ class test_jit(unittest.TestCase):
                                         residuals=residuals,
                                         probabilities=probabilities,
                                         accumulators=accumulator,
-                                        updates=update)
+                                        updates=update,
+                                        depression_constant=1.0)
 
         # The first halting probability should not be clamped. The second should be clamped to
         # 0.5, and the third should be clamped to zero.

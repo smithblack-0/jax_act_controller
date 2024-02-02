@@ -35,6 +35,7 @@ class ACTStates:
                 accumulators: Optional[Dict[str, PyTree]] = None,
                 defaults: Optional[Dict[str, PyTree]] = None,
                 updates: Optional[Dict[str, Optional[PyTree]]] = None,
+                depression_constant: Optional[float] = None,
                 )->'ACTStates':
         """
         Replace one or more feature, while leaving everything else
@@ -43,7 +44,6 @@ class ACTStates:
         """
         if epsilon is None:
             epsilon = self.epsilon
-
         if iterations is None:
             iterations = self.iterations
         if residuals is None:
@@ -56,6 +56,8 @@ class ACTStates:
             updates = self.updates
         if defaults is None:
             defaults = self.defaults
+        if depression_constant is None:
+            depression_constant = self.depression_constant
 
         return ACTStates(epsilon,
                          iterations,
@@ -63,7 +65,8 @@ class ACTStates:
                          probabilities,
                          defaults,
                          accumulators,
-                         updates)
+                         updates,
+                         depression_constant)
     epsilon: float
     iterations: jnp.ndarray
     residuals: jnp.ndarray
@@ -71,16 +74,9 @@ class ACTStates:
     defaults: Dict[str, PyTree]
     accumulators: Dict[str, PyTree]
     updates: Dict[str, Optional[PyTree]]
+    depression_constant: float
 
 
-
-
-@dataclass
-class BuilderState:
-    """
-    State functions used for the builder
-    mechanism.
-    """
 
 
 # We define the functions to represent states as a pytree,

@@ -36,7 +36,18 @@ Development tags
   * **Finished**
     Code will never be changed.
 
-Core features
+Features
+^^^^^^^^
+
+* Have good docstrings: Always
+* Support ACT: Done
+* Support ACT with PyTrees: Done
+* Support multiple accumulators: Done
+* Support probability depression: Done
+* Support lazy Memories: Unstarted
+* Support neural subroutines: Possible
+
+Core Classes
 ^^^^^^^^^^^^^
 
 These are core pieces of logic
@@ -59,8 +70,8 @@ should be fairly framework agonistic.
 
    * - Controller
      - Accumulates and updates state
-     - Stable, Need update: comments: new properties
-     - Needs update: Coverage, comment
+     - Stable
+     - Stable
      - May still add properties
 
    * - Builder
@@ -73,7 +84,7 @@ should be fairly framework agonistic.
      - Allows editing of act state during computation
      - Experimental
      - Experimental
-     -
+     - Need to add
 
    * - GroupEditor
      - Allows manipulation of controllers using magic operators

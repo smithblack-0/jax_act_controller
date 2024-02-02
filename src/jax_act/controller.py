@@ -48,6 +48,7 @@ class ACT_Controller(Immutable):
 
     ----- Direct Properties
 
+    depression_constant: Shows the currently active depression constant
     probabilities: The cumulative probabilities for each batch element
     residuals: The residuals on each batch element
     iterations: The iteration each batch is on, or alternatively where
@@ -59,6 +60,8 @@ class ACT_Controller(Immutable):
     halted_batches: A bool tensor of batches that are halted. True means halted.
     is_completely_halted: If every batch element is halted, this is true
     is_any_halted: If at least one batch element is halted, this is true.
+    updates_ready_to_commit: True if all accumulators have updates pending
+    has_cached_updates: True if any accumulator has updates pending
 
     ----- Main Methods -----
 
@@ -94,7 +97,9 @@ class ACT_Controller(Immutable):
 
 
     # Direct properties
-
+    @property
+    def depression_constant(self)->float:
+        return self.state.depression_constant
     @property
     def probabilities(self)->jnp.ndarray:
         return self.state.probabilities
@@ -149,6 +154,10 @@ class ACT_Controller(Immutable):
         :return: The updated residuals
         :return: The updated cumulative probabilities
         """
+        # We begin by depressing or increasing the probablity by
+        # the stored away depression constant.
+
+        halting_probabilities = self.depression_constant*halting_probabilities
 
         # We need to know what batches are just now halting
         # to capture that information in the residuals, and

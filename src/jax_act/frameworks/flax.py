@@ -4,9 +4,9 @@ import jax
 import flax
 from flax import linen as nn
 from jax import numpy as jnp
-from src.jax_act import ACT_Controller, ControllerBuilder, new_builder, PyTree, AbstractACTTemplate
+from src.jax_act import ACT_Controller, ControllerBuilder, PyTree, AbstractACTTemplate
 
-class AbstractFlaxACTACT(AbstractACTTemplate, nn.Module):
+class FlaxACTLayer(AbstractACTTemplate, nn.Module):
     """
     """
     #TODO: Make docstring for class
@@ -39,7 +39,7 @@ class AbstractFlaxACTACT(AbstractACTTemplate, nn.Module):
         msg = textwrap.dedent(msg)
         raise NotImplementedError(msg)
 
-    def setup_state(self, controller: ACT_Controller, state: PyTree):
+    def setup_lazy_parameters(self, controller: ACT_Controller, state: PyTree):
         # We run a single iteration if the controller's
         # parameters are not yet immutable.
         if self.is_mutable_collection("params"):

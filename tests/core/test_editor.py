@@ -30,6 +30,7 @@ def make_empty_state_mockup() -> ACTStates:
         updates=None,
         probabilities=None,
         residuals=None,
+        depression_constant=1.0
     )
 
 
@@ -173,7 +174,8 @@ class test_setter_validation(unittest.TestCase):
 
         state = make_empty_state_mockup()
         accumulator = {"potato" : jnp.array([0.1, 0.2, 0.3])}
-        state = state.replace(accumulators=accumulator, defaults=accumulator)
+        state = state.replace(accumulators=accumulator,
+                              defaults=accumulator,)
 
 
         # Test works properly when accumulator does exist

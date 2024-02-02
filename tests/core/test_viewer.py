@@ -32,7 +32,8 @@ class test_properties(unittest.TestCase):
                           residuals=residuals,
                           accumulators=accumulator,
                           defaults=defaults,
-                          updates=updates)
+                          updates=updates,
+                          depression_constant=1.0)
         return state
 
 
@@ -89,7 +90,8 @@ class test_viewer_methods(unittest.TestCase):
                           residuals=residuals,
                           accumulators=accumulator,
                           defaults=defaults,
-                          updates=updates)
+                          updates=updates,
+                          depression_constant = 1.0)
         return state
     def setUp(self):
         # Storing mock state for use in each test
