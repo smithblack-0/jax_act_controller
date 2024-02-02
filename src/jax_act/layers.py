@@ -14,7 +14,6 @@ framework is built on top of jax, it should hopefully work.
 
 from typing import Tuple, Callable, Protocol, Any
 
-import flax.core.lift
 import jax.lax
 from abc import ABC, abstractmethod
 from src.jax_act import utils
@@ -22,8 +21,11 @@ from src.jax_act.controller import ACT_Controller
 from src.jax_act.types import PyTree
 from jax import numpy as jnp
 
-class AbstractLayerMixin(ABC):
-    #TODO: update comments to talk about max_iterations
+class AbstractLayerTemplate(ABC):
+    #TODO:
+    #   - update comments to talk about max_iterations
+    #   - Add method to provide editors, viewers, etc
+    #   - Modify example code to use get_build
     """
     The ACT layer based definition. It contains an
     object-oriented, layer-based version of the act process, and
@@ -330,7 +332,7 @@ class _ACTValidationWrapper:
     Provides validation on returns.
     """
     def __init__(self,
-                 layer: AbstractLayerMixin,
+                 layer: AbstractLayerTemplate,
                  check_errors: bool
                  ):
         self.layer = layer
