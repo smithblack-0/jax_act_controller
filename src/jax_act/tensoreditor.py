@@ -23,7 +23,7 @@ class ErrorModes(Enum):
     standard = 'standard'
     silence = 'silence'
 
-class Editor(Immutable):
+class TensorEditor(Immutable):
     f"""
     ---- Purpose ----
 
@@ -295,7 +295,7 @@ class Editor(Immutable):
             errors.throw()
         else:
             pass
-    def set_probabilities(self, values: jnp.ndarray)->'Editor':
+    def set_probabilities(self, values: jnp.ndarray)-> 'TensorEditor':
         """
         Sets the values of probabilities to something new
         :param values: Values to set
@@ -311,9 +311,9 @@ class Editor(Immutable):
             self._validate_probability(values, context_message)
         self._execute_validation(check_for_errors)
         state = self.state.replace(probabilities=values)
-        return Editor(state, error_mode=self.error_mode)
+        return TensorEditor(state, error_mode=self.error_mode)
 
-    def set_residuals(self, values: jnp.ndarray)->'Editor':
+    def set_residuals(self, values: jnp.ndarray)-> 'TensorEditor':
         """
         Sets the residuals to be equal to particular
         values, and returns a new builder.
@@ -330,9 +330,9 @@ class Editor(Immutable):
             self._validate_probability(values, context_message)
         self._execute_validation(check_for_errors)
         state = self.state.replace(residuals=values)
-        return Editor(state, self.error_mode)
+        return TensorEditor(state, self.error_mode)
 
-    def set_iterations(self, values: jnp.ndarray)->'Editor':
+    def set_iterations(self, values: jnp.ndarray)-> 'TensorEditor':
         """
         Sets the iteration channel to something new.
         :param values: The iterations tensor to set it to
@@ -348,10 +348,10 @@ class Editor(Immutable):
             self._validate_is_natural_numbers(values, context_message)
         self._execute_validation(check_for_errors)
         state = self.state.replace(iterations=values)
-        return Editor(state, self.error_mode)
+        return TensorEditor(state, self.error_mode)
 
 
-    def set_epsilon(self, epsilon: float)->"Editor":
+    def set_epsilon(self, epsilon: float)-> "TensorEditor":
         """
         Sets the epsilon to be a new value.
 
@@ -376,9 +376,9 @@ class Editor(Immutable):
 
         self._execute_validation(check_for_errors)
         state = self.state.replace(epsilon = epsilon)
-        return Editor(state, self.error_mode)
+        return TensorEditor(state, self.error_mode)
 
-    def set_accumulator(self, name: str, value: PyTree)->'Editor':
+    def set_accumulator(self, name: str, value: PyTree)-> 'TensorEditor':
         """
         Sets an accumulator to be filled with a particular series of values.
 
@@ -400,11 +400,11 @@ class Editor(Immutable):
         accumulators = self.accumulators.copy()
         accumulators[name] = value
         state = self.state.replace(accumulators=accumulators)
-        return Editor(state, self.error_mode)
+        return TensorEditor(state, self.error_mode)
     def set_defaults(self,
                      name: str,
                      value: PyTree
-                     )->'Editor':
+                     )-> 'TensorEditor':
         """
         Sets the default values for accumulators to new values. This does not
         change any tensor shapes or datatypes.
@@ -428,12 +428,12 @@ class Editor(Immutable):
         defaults = self.defaults.copy()
         defaults[name] = value
         state = self.state.replace(defaults=defaults)
-        return Editor(state, self.error_mode)
+        return TensorEditor(state, self.error_mode)
 
     def set_updates(self,
                     name: str,
                     values: Optional[PyTree]
-                    )->'Editor':
+                    )-> 'TensorEditor':
         """
         Sets the update values to new values. This does not
         change any tensor shapes or datatypes.
@@ -457,12 +457,12 @@ class Editor(Immutable):
         updates = self.state.updates.copy()
         updates[name] = values
         state = self.state.replace(updates=updates)
-        return Editor(state, self.error_mode)
+        return TensorEditor(state, self.error_mode)
 
     @classmethod
     def edit_controller(cls,
                         controller: ACT_Controller,
-                        error_mode: str = ErrorModes.standard.value)-> 'Editor':
+                        error_mode: str = ErrorModes.standard.value)-> 'TensorEditor':
         """
         Opens up a new Editor to edit an existing controller. Returns the
         Editor.
@@ -479,7 +479,7 @@ class Editor(Immutable):
     @classmethod
     def edit_save(cls,
                   save: ACTStates,
-                  error_mode: str = ErrorModes.standard.value)-> 'Editor':
+                  error_mode: str = ErrorModes.standard.value)-> 'TensorEditor':
         """
         Opens up a builder to edit an existing save from any
         class.
@@ -517,15 +517,15 @@ class Editor(Immutable):
         self.state = state
         self.make_immutable()
 
-def flatten_editor(editor: Editor)->Tuple[Any, Any]:
+def flatten_editor(editor: TensorEditor)->Tuple[Any, Any]:
     state = editor.state
     error_mode = editor.error_mode
     flat_state, tree_def = jax.tree_util.tree_flatten(state)
     return (flat_state, (error_mode, tree_def))
 
-def unflatten_editor(aux_data: Any, flat_state: Any)->Editor:
+def unflatten_editor(aux_data: Any, flat_state: Any)->TensorEditor:
     error_mode, tree_def = aux_data
     state = jax.tree_util.tree_unflatten(tree_def, flat_state)
-    return Editor(state, error_mode)
+    return TensorEditor(state, error_mode)
 
-jax.tree_util.register_pytree_node(Editor, flatten_editor, unflatten_editor)
+jax.tree_util.register_pytree_node(TensorEditor, flatten_editor, unflatten_editor)
