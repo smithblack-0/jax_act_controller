@@ -1,7 +1,6 @@
 """
-STABLE: Code in this section will never be modified in a way that breaks backwards
-compatibility
-
+INTERNAL: Code in this section is entirely internal,
+and subject to change on a whim.
 """
 
 

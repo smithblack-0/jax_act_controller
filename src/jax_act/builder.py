@@ -174,7 +174,9 @@ class ControllerBuilder(Immutable):
     ```
     """
 
-
+    # TODO:
+    #    - Add support in new_builder for explictly passing
+    #
     @property
     def epsilon(self)->float:
         return self.state.epsilon

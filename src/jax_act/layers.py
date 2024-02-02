@@ -21,11 +21,12 @@ from src.jax_act.controller import ACT_Controller
 from src.jax_act.types import PyTree
 from jax import numpy as jnp
 
-class AbstractLayerTemplate(ABC):
-    #TODO:
+class AbstractACTTemplate(ABC):
+    # TODO:
     #   - update comments to talk about max_iterations
     #   - Add method to provide editors, viewers, etc
     #   - Modify example code to use get_build
+    #   - Add probability depression feature
     """
     The ACT layer based definition. It contains an
     object-oriented, layer-based version of the act process, and
@@ -332,7 +333,7 @@ class _ACTValidationWrapper:
     Provides validation on returns.
     """
     def __init__(self,
-                 layer: AbstractLayerTemplate,
+                 layer: AbstractACTTemplate,
                  check_errors: bool
                  ):
         self.layer = layer

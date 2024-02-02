@@ -17,7 +17,7 @@ import jax
 from jax import numpy as jnp
 from src.jax_act.builder import ControllerBuilder
 from src.jax_act.controller import ACT_Controller
-from src.jax_act.layers import _ACTValidationWrapper, AbstractLayerTemplate
+from src.jax_act.layers import _ACTValidationWrapper, AbstractACTTemplate
 from src.jax_act.types import PyTree
 from typing import Tuple
 
@@ -168,7 +168,7 @@ class testValidation(unittest.TestCase):
 
     def test_make_controller(self):
         """ Test a simple make controller case"""
-        class ValidLayer(AbstractLayerTemplate):
+        class ValidACT(AbstractACTTemplate):
             def make_controller(self, state: jnp.ndarray, *args, **kwargs)->ACT_Controller:
                 batch_shape = state.shape[0]
                 builder = ControllerBuilder.new_builder(batch_shape)
@@ -186,7 +186,7 @@ class testValidation(unittest.TestCase):
                 # This is a mockup.
                 return controller, state
 
-        valid_layer = ValidLayer()
+        valid_layer = ValidACT()
         valid_instance = _ACTValidationWrapper(valid_layer, True)
         input = jnp.ones([7, 2])
         controller = valid_instance.make_controller(input)
@@ -194,7 +194,7 @@ class testValidation(unittest.TestCase):
 
     def test_make_controller_using_arguments(self):
         """Test make controller works when passing user flags"""
-        class ValidLayer(AbstractLayerTemplate):
+        class ValidACT(AbstractACTTemplate):
             def make_controller(self, state: jnp.ndarray, length: int)->ACT_Controller:
                 batch_shape = list(state.shape[0:length])
                 builder = ControllerBuilder.new_builder(batch_shape)
@@ -209,7 +209,7 @@ class testValidation(unittest.TestCase):
                 # This is a mockup.
                 return controller, state
 
-        valid_make_protocol = ValidLayer()
+        valid_make_protocol = ValidACT()
         valid_instance = _ACTValidationWrapper(valid_make_protocol, True)
 
         input = jnp.ones([7, 3])
@@ -221,7 +221,7 @@ class testValidation(unittest.TestCase):
         self.assertIsInstance(controller, ACT_Controller)
     def test_run_layer(self):
 
-        class ValidLayer(AbstractLayerTemplate):
+        class ValidACT(AbstractACTTemplate):
             def make_controller(self, state: jnp.ndarray)->ACT_Controller:
                 batch_shape = state.shape[0]
                 builder = ControllerBuilder.new_builder(batch_shape)
@@ -241,7 +241,7 @@ class testValidation(unittest.TestCase):
                 controller = controller.iterate_act(halting_probs)
                 return controller, state
 
-        valid_instance = ValidLayer()
+        valid_instance = ValidACT()
         valid_instance = _ACTValidationWrapper(valid_instance, True)
 
         state = jnp.ones([3])
@@ -254,7 +254,7 @@ class test_AbstractLayerMixin(unittest.TestCase):
     can be reasonably used to perform
     the various tasks that may be demanded of it
     """
-    class ACTLayer(AbstractLayerTemplate):
+    class ACTACT(AbstractACTTemplate):
         """
         A pet test layer for testing
         that the mixin functions properly
@@ -302,7 +302,7 @@ class test_AbstractLayerMixin(unittest.TestCase):
             self.embedding_dim = embedding_dim
     def test_act(self):
         embedding_dim = 10
-        layer = self.ACTLayer(embedding_dim)
+        layer = self.ACTACT(embedding_dim)
         initial_state = jnp.zeros([7])
         controller, state = layer(initial_state)
 

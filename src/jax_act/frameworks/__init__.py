@@ -1,1 +1,1 @@
-from .flax import AbstractFlaxACTLayer
+from .flax import AbstractFlaxACTACT

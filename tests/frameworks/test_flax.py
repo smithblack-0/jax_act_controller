@@ -10,8 +10,8 @@ from flax.training import train_state
 from typing import Tuple, Callable
 
 from src import jax_act
-from src.jax_act import ACT_Controller, ControllerBuilder, AbstractLayerTemplate, PyTree
-from src.jax_act.frameworks.flax import AbstractFlaxACTLayer
+from src.jax_act import ACT_Controller, ControllerBuilder, AbstractACTTemplate, PyTree
+from src.jax_act.frameworks.flax import AbstractFlaxACTACT
 jax.config.update("jax_traceback_filtering", "off")
 
 class test_with_flax(unittest.TestCase):
@@ -25,7 +25,7 @@ class test_with_flax(unittest.TestCase):
         parameters will correctly run when
         only dealing with parameters as a complication.
         """
-        class DirectACT(AbstractFlaxACTLayer):
+        class DirectACT(AbstractFlaxACTACT):
             """
             The test layer. This will consist of an act
             mechanism.
@@ -120,7 +120,7 @@ class test_with_flax(unittest.TestCase):
         norm, runs
             """
 
-        class StatefulACT(AbstractFlaxACTLayer):
+        class StatefulACT(AbstractFlaxACTACT):
             """
             The test layer. This will consist of an act
             mechanism.

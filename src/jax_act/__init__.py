@@ -5,5 +5,5 @@ from .viewer import ACTViewer
 from .tensoreditor import TensorEditor
 from .types import PyTreeShapes, PyTree
 from . import utils
-from .layers import AbstractLayerTemplate
+from .layers import AbstractACTTemplate
 from . import frameworks

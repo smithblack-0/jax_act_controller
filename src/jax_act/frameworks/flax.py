@@ -4,9 +4,9 @@ import jax
 import flax
 from flax import linen as nn
 from jax import numpy as jnp
-from src.jax_act import ACT_Controller, ControllerBuilder, new_builder, PyTree, AbstractLayerTemplate
+from src.jax_act import ACT_Controller, ControllerBuilder, new_builder, PyTree, AbstractACTTemplate
 
-class AbstractFlaxACTLayer(AbstractLayerTemplate, nn.Module):
+class AbstractFlaxACTACT(AbstractACTTemplate, nn.Module):
     """
     """
     #TODO: Make docstring for class
