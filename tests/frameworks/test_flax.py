@@ -10,7 +10,7 @@ from flax.training import train_state
 from typing import Tuple, Callable
 
 from src import jax_act
-from src.jax_act import ACT_Controller, ControllerBuilder, AbstractLayerMixin, PyTree
+from src.jax_act import ACT_Controller, ControllerBuilder, AbstractLayerTemplate, PyTree
 from src.jax_act.frameworks.flax import AbstractFlaxACTLayer
 jax.config.update("jax_traceback_filtering", "off")
 

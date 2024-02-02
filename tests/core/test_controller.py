@@ -33,6 +33,9 @@ class test_properties(unittest.TestCase):
     However, the main logic functions depend on these being correct. Any
     error here would cause cascading issues. So we test.
     """
+    #TODO: Test coverage is out of date. Add tests
+    #    - updates_ready_to_commit
+    #    - has_cached_updates
 
     def make_empty_state_mockup(self)->ACTStates:
 

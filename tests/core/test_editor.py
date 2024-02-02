@@ -14,7 +14,7 @@ import jax
 
 from jax import numpy as jnp
 from jax.experimental import checkify
-from src.jax_act.editor import Editor, ErrorModes
+from src.jax_act.tensoreditor import TensorEditor, ErrorModes
 from src.jax_act.states import ACTStates
 from src.jax_act import utils
 from src.jax_act.controller import ACT_Controller
@@ -47,7 +47,7 @@ class test_setter_validation(unittest.TestCase):
         item3 = jnp.zeros([7, 5])
 
         info_message =  "Seen while testing validate shape"
-        test_function = Editor._validate_same_shape
+        test_function = TensorEditor._validate_same_shape
         # Test we do not throw when shapes are compatible. Test under
 
         def validation():
@@ -76,7 +76,7 @@ class test_setter_validation(unittest.TestCase):
         item2 = jnp.ones([10, 5], dtype=jnp.float16)
 
         info_msg = "While testing validate dtype"
-        target_function = Editor._validate_same_dtype
+        target_function = TensorEditor._validate_same_dtype
 
         # Test we do not throw with compatible dtypes
         def validation():
@@ -105,7 +105,7 @@ class test_setter_validation(unittest.TestCase):
         """ Test that probability validation is good"""
 
         info_msg = "While testing validate probabilities"
-        target_function = Editor._validate_probability
+        target_function = TensorEditor._validate_probability
 
         # Test that no throw happens when good
         valid_probabilities = jnp.array([0.0, 1.0, 0.3])
@@ -149,7 +149,7 @@ class test_setter_validation(unittest.TestCase):
         """ Test that validate whole numbers functions properly"""
 
         info_message = "Message generated while testing validate_is_natural_numbers"
-        target_method = Editor._validate_is_natural_numbers
+        target_method = TensorEditor._validate_is_natural_numbers
 
         # Test we do not throw when we should not
 
@@ -178,7 +178,7 @@ class test_setter_validation(unittest.TestCase):
 
         # Test works properly when accumulator does exist
         def validate():
-            editor = Editor.edit_save(state)
+            editor = TensorEditor.edit_save(state)
             editor._validate_accumulator_exists("potato", info_message)
         self.execute_validation(validate)
 
@@ -187,7 +187,7 @@ class test_setter_validation(unittest.TestCase):
 
         # Test throws properly when accumulator does not exist
         def validate():
-            editor = Editor.edit_save(state)
+            editor = TensorEditor.edit_save(state)
             editor._validate_accumulator_exists("tomato", info_message)
         with self.assertRaises(checkify.JaxRuntimeError) as err:
             self.execute_validation(validate)
@@ -205,7 +205,7 @@ class test_setter_validation(unittest.TestCase):
         item3 = {"item" : None}
 
         info_msg = "While testing validate pytree structure"
-        target_method = Editor._validate_same_pytree_structure
+        target_method = TensorEditor._validate_same_pytree_structure
         # Check no throw when compatible
         #
         # Also check jit compatibity
@@ -237,7 +237,7 @@ class test_setter_validation(unittest.TestCase):
         tree_bad_dtype = {"item1" : tensor_bad_dtype, "item2" : tensor_bad_dtype}
 
         info_msg = "Testing validate pytree leaves"
-        target_method = Editor._validate_pytree_leaves
+        target_method = TensorEditor._validate_pytree_leaves
 
         # Test we do not throw when compatible
         def validation():
@@ -302,7 +302,7 @@ class test_setters(unittest.TestCase):
 
         # Initialize an editor in standard mode
         save = self.make_state_mockup()
-        editor = Editor.edit_save(save, "standard")
+        editor = TensorEditor.edit_save(save, "standard")
 
         # Set new values for probabilities
 
@@ -348,7 +348,7 @@ class test_setters(unittest.TestCase):
 
         # Initialize a editor
         save = self.make_state_mockup()
-        editor = Editor.edit_save(save, "standard")
+        editor = TensorEditor.edit_save(save, "standard")
 
 
         # Set new values for residuals
@@ -392,7 +392,7 @@ class test_setters(unittest.TestCase):
 
         # Initialize a editor
         save = self.make_state_mockup()
-        editor = Editor.edit_save(save, "standard")
+        editor = TensorEditor.edit_save(save, "standard")
 
         # Set new values for iterations (should be int32)
         new_iterations = jnp.array([1, 2, 3], dtype=jnp.int32)
@@ -429,7 +429,7 @@ class test_setters(unittest.TestCase):
         # Initialize a editor
         # Initialize a editor
         save = self.make_state_mockup()
-        editor = Editor.edit_save(save, "standard")
+        editor = TensorEditor.edit_save(save, "standard")
 
         # Set a valid epsilon value
         new_epsilon = 0.5
@@ -460,7 +460,7 @@ class test_setters(unittest.TestCase):
         state = self.make_state_mockup()
         state = state.replace(accumulators={"test_acc" : initial_accumulator},
                               defaults = {"test_acc" : initial_accumulator})
-        editor = Editor.edit_save(state, "standard")
+        editor = TensorEditor.edit_save(state, "standard")
 
         # Set a new value for the defined accumulator
         new_accumulator_value = {"matrix": jnp.ones([3, 3, 3]), "normalizer": jnp.ones([3, 3])}
@@ -491,7 +491,7 @@ class test_setters(unittest.TestCase):
         initial_default = {}
         initial_default["test_acc"] = {"matrix": jnp.zeros([3, 3, 3]), "normalizer": jnp.zeros([3, 3])}
         state = state.replace(defaults = initial_default, accumulators=initial_default)
-        editor = Editor.edit_save(state)
+        editor = TensorEditor.edit_save(state)
 
         # Set new default values for the defined accumulator
         new_default_value = {"matrix": jnp.ones([3, 3, 3]), "normalizer": jnp.ones([3, 3])}
@@ -521,7 +521,7 @@ class test_setters(unittest.TestCase):
         initial_default = {}
         initial_default["test_acc"] = {"matrix": jnp.zeros([3, 3, 3]), "normalizer": jnp.zeros([3, 3])}
         state = state.replace(defaults = initial_default, accumulators=initial_default, updates=initial_default)
-        editor = Editor.edit_save(state)
+        editor = TensorEditor.edit_save(state)
 
         # Set new update values for the defined accumulator
         new_update_value = {"matrix": jnp.ones([3, 3, 3]), "normalizer": jnp.ones([3, 3])}
@@ -588,7 +588,7 @@ class test_edit_cases(unittest.TestCase):
                        probabilities: jnp.ndarray,
                        accumulator: PyTree,
                        updates: Optional[PyTree])->ACTStates:
-            editor = Editor.edit_save(save, mode)
+            editor = TensorEditor.edit_save(save, mode)
             editor = editor.set_probabilities(probabilities)
             editor = editor.set_accumulator("output", accumulator)
             editor = editor.set_updates("output", updates)

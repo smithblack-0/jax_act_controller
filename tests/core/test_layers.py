@@ -17,7 +17,7 @@ import jax
 from jax import numpy as jnp
 from src.jax_act.builder import ControllerBuilder
 from src.jax_act.controller import ACT_Controller
-from src.jax_act.layers import _ACTValidationWrapper, AbstractLayerMixin
+from src.jax_act.layers import _ACTValidationWrapper, AbstractLayerTemplate
 from src.jax_act.types import PyTree
 from typing import Tuple
 
@@ -168,7 +168,7 @@ class testValidation(unittest.TestCase):
 
     def test_make_controller(self):
         """ Test a simple make controller case"""
-        class ValidLayer(AbstractLayerMixin):
+        class ValidLayer(AbstractLayerTemplate):
             def make_controller(self, state: jnp.ndarray, *args, **kwargs)->ACT_Controller:
                 batch_shape = state.shape[0]
                 builder = ControllerBuilder.new_builder(batch_shape)
@@ -194,7 +194,7 @@ class testValidation(unittest.TestCase):
 
     def test_make_controller_using_arguments(self):
         """Test make controller works when passing user flags"""
-        class ValidLayer(AbstractLayerMixin):
+        class ValidLayer(AbstractLayerTemplate):
             def make_controller(self, state: jnp.ndarray, length: int)->ACT_Controller:
                 batch_shape = list(state.shape[0:length])
                 builder = ControllerBuilder.new_builder(batch_shape)
@@ -221,7 +221,7 @@ class testValidation(unittest.TestCase):
         self.assertIsInstance(controller, ACT_Controller)
     def test_run_layer(self):
 
-        class ValidLayer(AbstractLayerMixin):
+        class ValidLayer(AbstractLayerTemplate):
             def make_controller(self, state: jnp.ndarray)->ACT_Controller:
                 batch_shape = state.shape[0]
                 builder = ControllerBuilder.new_builder(batch_shape)
@@ -254,7 +254,7 @@ class test_AbstractLayerMixin(unittest.TestCase):
     can be reasonably used to perform
     the various tasks that may be demanded of it
     """
-    class ACTLayer(AbstractLayerMixin):
+    class ACTLayer(AbstractLayerTemplate):
         """
         A pet test layer for testing
         that the mixin functions properly
