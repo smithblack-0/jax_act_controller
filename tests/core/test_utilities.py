@@ -1,7 +1,7 @@
 import unittest
 from numpy import random
 
-from src.jax_act import utils
+from src.jax_act.core import utils
 from jax import numpy as jnp
 
 class test_utilities(unittest.TestCase):

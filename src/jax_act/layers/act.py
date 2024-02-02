@@ -15,10 +15,8 @@ framework is built on top of jax, it should hopefully work.
 from typing import Tuple, Callable, Any
 
 import jax.lax
-from abc import ABC
-from src.jax_act import utils
-from src.jax_act.controller import ACT_Controller
-from src.jax_act.types import PyTree
+from src.jax_act.core.controller import ACT_Controller
+from src.jax_act.core.types import PyTree
 from dataclasses import dataclass, asdict
 
 from .core import AbstractControllerContract, ContractValidationWrapper

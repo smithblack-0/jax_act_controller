@@ -15,10 +15,10 @@ to fix if everything suddenly breaks.
 import unittest
 import jax
 from jax import numpy as jnp
-from src.jax_act.builder import ControllerBuilder
-from src.jax_act.controller import ACT_Controller
+from src.jax_act.core.builder import ControllerBuilder
+from src.jax_act.core.controller import ACT_Controller
 from src.jax_act.layers.core import ContractValidationWrapper, AbstractControllerContract
-from src.jax_act.types import PyTree
+from src.jax_act.core.types import PyTree
 from typing import Tuple
 
 SHOW_ERROR_MESSAGES = True

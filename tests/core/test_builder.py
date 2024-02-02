@@ -4,15 +4,12 @@ Tests for the builder act mechanism
 
 import itertools
 import unittest
-import warnings
 import jax
 
 from jax import numpy as jnp
-from jax.experimental import checkify
-from src.jax_act.builder import ControllerBuilder
-from src.jax_act.states import ACTStates
-from src.jax_act import utils
-from src.jax_act.controller import ACT_Controller
+from src.jax_act.core.builder import ControllerBuilder
+from src.jax_act.core.states import ACTStates
+from src.jax_act.core import utils
 
 SHOW_ERROR_MESSAGES = False
 

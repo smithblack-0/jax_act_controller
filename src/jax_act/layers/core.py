@@ -2,9 +2,9 @@ from abc import ABC, abstractmethod
 from typing import Tuple, Union, List, Optional, Callable, Any
 
 from jax import numpy as jnp
-from src.jax_act import PyTree, ACT_Controller
-from src.jax_act.builder import ControllerBuilder
-from src.jax_act import utils
+from src.jax_act.core.controller import PyTree, ACT_Controller
+from src.jax_act.core.builder import ControllerBuilder
+from src.jax_act.core import utils
 
 
 class AbstractControllerContract(ABC):

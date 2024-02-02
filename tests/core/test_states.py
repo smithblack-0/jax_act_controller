@@ -1,6 +1,6 @@
 import unittest
 
-from src.jax_act.states import ACTStates
+from src.jax_act.core.states import ACTStates
 import jax
 import jax.numpy as jnp
 

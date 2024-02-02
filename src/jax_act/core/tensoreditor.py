@@ -13,11 +13,11 @@ from enum import Enum
 from jax import numpy as jnp
 from jax.experimental import checkify
 
-from src.jax_act import utils
-from src.jax_act.states import ACTStates
-from src.jax_act.types import PyTree
-from src.jax_act.immutable import Immutable
-from src.jax_act.controller import ACT_Controller
+from src.jax_act.core import utils
+from src.jax_act.core.states import ACTStates
+from src.jax_act.core.types import PyTree
+from src.jax_act.core.immutable import Immutable
+from src.jax_act.core.controller import ACT_Controller
 
 class ErrorModes(Enum):
     standard = 'standard'

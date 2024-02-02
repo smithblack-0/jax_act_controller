@@ -8,7 +8,7 @@ import jax
 from dataclasses import dataclass, asdict
 from typing import Dict, Optional, Any, Tuple
 from jax import numpy as jnp
-from src.jax_act.types import PyTree
+from src.jax_act.core.types import PyTree
 
 
 @dataclass

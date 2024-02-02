@@ -9,10 +9,10 @@ from jax import numpy as jnp
 
 from typing import Dict, Callable, Optional, Tuple, Any
 
-from src.jax_act.types import PyTree
-from src.jax_act.immutable import Immutable
-from src.jax_act.states import ACTStates
-from src.jax_act import utils
+from src.jax_act.core.types import PyTree
+from src.jax_act.core.immutable import Immutable
+from src.jax_act.core.states import ACTStates
+from src.jax_act.core import utils
 
 
 class ACTViewer(Immutable):

@@ -9,19 +9,15 @@ some degree of error checking.
 
 from typing import Optional, Any, Tuple
 
-from src.jax_act.viewer import ACTViewer
-from src.jax_act.states import ACTStates
-from src.jax_act.immutable import Immutable
-from src.jax_act import utils
-
+from src.jax_act.core.viewer import ACTViewer
+from src.jax_act.core.states import ACTStates
+from src.jax_act.core.immutable import Immutable
+from src.jax_act.core import utils
 
 import jax.tree_util
 import textwrap
-from functools import partial
-from jax.tree_util import Partial
 from jax import numpy as jnp
-from jax.experimental import checkify
-from src.jax_act.types import PyTree
+from src.jax_act.core.types import PyTree
 class ACT_Controller(Immutable):
     """
     A controller for the ACT process.

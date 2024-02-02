@@ -1,10 +1,8 @@
 import textwrap
 
-import jax
-import flax
 from flax import linen as nn
-from jax import numpy as jnp
-from src.jax_act import ACT_Controller, ControllerBuilder, PyTree, AbstractACTTemplate
+from src.jax_act.layers.act import AbstractACTTemplate
+from src.jax_act import ACT_Controller, PyTree
 
 class FlaxACTLayer(AbstractACTTemplate, nn.Module):
     """

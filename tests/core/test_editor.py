@@ -5,20 +5,16 @@ The editor is generally designed to allow the editing
 of the values of an act process.
 """
 
-import itertools
 import unittest
-import warnings
 from typing import Callable, List, Optional
 
 import jax
 
 from jax import numpy as jnp
 from jax.experimental import checkify
-from src.jax_act.tensoreditor import TensorEditor, ErrorModes
-from src.jax_act.states import ACTStates
-from src.jax_act import utils
-from src.jax_act.controller import ACT_Controller
-from src.jax_act.types import PyTree
+from src.jax_act.core.tensoreditor import TensorEditor, ErrorModes
+from src.jax_act.core.states import ACTStates
+from src.jax_act.core.types import PyTree
 
 SHOW_ERROR_MESSAGES = False
 def make_empty_state_mockup() -> ACTStates:

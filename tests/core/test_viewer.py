@@ -6,9 +6,9 @@ import unittest
 import jax
 import numpy as np
 
-from src.jax_act.states import ACTStates
-from src.jax_act.viewer import ACTViewer
-from src.jax_act import utils
+from src.jax_act.core.states import ACTStates
+from src.jax_act.core.viewer import ACTViewer
+from src.jax_act.core import utils
 from jax import numpy as jnp
 
 class test_properties(unittest.TestCase):
@@ -216,7 +216,8 @@ class test_viewer_jit(unittest.TestCase):
                           residuals=residuals,
                           accumulators=accumulator,
                           defaults=defaults,
-                          updates=updates)
+                          updates=updates,
+                          depression_constant=1.0)
         return state
 
     def setUp(self):

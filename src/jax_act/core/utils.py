@@ -6,7 +6,7 @@ import numpy as np
 
 from jax import numpy as jnp
 
-from src.jax_act.types import PyTree
+from src.jax_act.core.types import PyTree
 
 def format_error_message(message: str, context: str)->str:
     """
