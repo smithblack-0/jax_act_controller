@@ -86,11 +86,11 @@ should be fairly framework agonistic.
      - Experimental
      - Need to add
 
-   * - GroupEditor
+   * - BroadcastMagic
      - Allows manipulation of controllers using magic operators
-     - Possible
-     - Possible
-     -
+     - Development
+     - Unstarted
+     - Confirmed
 
    * - Viewer
      - Helps view internal state using masks

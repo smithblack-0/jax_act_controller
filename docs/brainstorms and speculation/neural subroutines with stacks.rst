@@ -104,11 +104,21 @@ Problems:
 - Make a subroutine which may have only one batch running frequently.
 - It is possible it will get quite bad.
 
-Neural subroutine architecture
+Differentiable Neural subroutine architecture
 ==============================
 
 Instead, we present the model with a differential stack, and
-the ability to push or pop its state onto the stack at any time
+the ability to push or pop its state onto the stack at any time.
+
+We basically have three choices during each computation step.
+We can choose to push onto the stack, pop off of the stack, or
+update our state.
+
+We do all three! then we merge the results together according
+to the probability assigned to each action, in the
+stadard differentiability mechanism.
+
+
 
 def run_pop(stack, state):
     new_stack, features = stack.pop()
@@ -132,6 +142,22 @@ def run_push(stack, parameters, act_unit, state):
     state = make_substate(state)
     return new_stack, parameters, act_unit, state
 
+def merge_branches(probabilities,
+                   pop_branch,
+                   update_branch,
+                   push_branch):
+    pop_prob, update_prob, push_prob = probabilities.split(3)
+    output = []
+    for pop_item, update_item, push_item in zip(pop_branch,
+                                                update_branch,
+                                                push_branch):
+        superimposed = pop_prob*pop_item
+        superimposed += update_prob*update_item
+        superimposed += push_prob*push_item
+        output.append(superimposed)
+
+    return tuple(output)
+
 
 def neural_subroutine(directive, state):
 
@@ -145,7 +171,6 @@ def neural_subroutine(directive, state):
         pop_branch = run_pop(stack, state)
         update_branch = run_update(stack, parameters, act_unit, state)
         push_branch = run_push(stack, parameters, act_unit, state)
-
         stack, parameters, act_unit, state = merge_branches(action_probabilities,
                                                             pop_branch,
                                                             update_branch,
