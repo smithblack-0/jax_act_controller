@@ -206,13 +206,14 @@ def _replicate_leaves(source_treedef: PyTreeDef,
     # Broadcasting between tensors is uninteresting and covered in a million other places
     #
     # We talk here about broadcasting between pytrees. To broadcast between two pytrees,
-    # you should essentially walk both trees and track down where there is a leaf
+    # you should essentially walk both trees and track down where there is a leaf on the
+    # source tree, and find out what that leaf is. Then, continue walking the target tree,
+    # and everywhere there is a leaf in it replicate the current source leaf.
     #
-    # Jax's tree restoration tool, tree_unflatten, expects a flat list of leaves
-    # found in a depth-first traversal, and for there to be the same number of leaves
-    # in that list as in the tree definition.
+    # This is all well and good, and if the tools supported it this is how we would do
+    # this. However, the API is not so nice. Instead, we do something that effectively behaves
+    # the same way.
     #
-    # Mathematically, when you are broadcasting the two trees together we are going to n
 
 
     if jax.tree_util.treedef_is_leaf(source_treedef):
