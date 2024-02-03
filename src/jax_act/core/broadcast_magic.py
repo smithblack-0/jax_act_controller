@@ -30,55 +30,15 @@ class BroadcastMagic:
     #        - Various magic methods
     #    - Docstring
 
-    def __add__(self,
-                other: 'BroadcastMagic'
-                )->'BroadcastMagic':
-        context_error_message = "Issue encountered during left addition in BroadcastMagic"
-        new_state = self.perform_binary_operation(jnp.add,
-                                                  self.state,
-                                                  other.state,
-                                                  context_error_message)
-        return BroadcastMagic(new_state)
 
-    def __radd__(self,
-                 other: 'BroadcastMagic'
-                 )->'BroadcastMagic':
-        context_error_message = "Issue was encountered during right addition in BroadcastMagic"
-        new_state = self.perform_binary_operation(jnp.add,
-                                                  self.state,
-                                                  other.state,
-                                                  context_error_message)
-        return BroadcastMagic(new_state)
 
-    def __sub__(self,
-                other:
-                )->'BroadcastMagic':
-        context_error_message = "Issue was encountered during left subtraction in BroadcastMagic"
-        new_state = self.perform_binary_operation(jnp.subtract,
-                                                  self.state,
-                                                  other.state
-                                                  context_error_message)
-        return BroadcastMagic(new_state)
-
-    def __rsub__(self,
-                 other: 'BroadcastMagic'
-                 )->'BroadcastMagic':
-        context_error_message = "Issue was encountered during right subtraction in BroadcastMagic"
-        new_state = self.perform_binary_operation(jnp.subtract,
-                                                  other.state,
-                                                  self.state,
-                                                  context_error_message)
-        return BroadcastMagic(new_state)
-
-    def __mul__(self,
-                other):
-
-    @staticmethod
-    def perform_binary_operation(operator: Callable[[jnp.ndarray, jnp.ndarray], jnp.ndarray],
-                                 operand_a: PyTree,
-                                 operand_b: PyTree,
-                                 context_msg: str
-                                 )->PyTree:
+    @classmethod
+    def execute_binary_operator(cls,
+                                operator: Callable[[jnp.ndarray, jnp.ndarray], jnp.ndarray],
+                                operand_a: PyTree,
+                                operand_b: PyTree,
+                                context_msg: str
+                                ) -> PyTree:
         """
         Performs a binary operation across two pytrees with same treedef
         using an operator defined in terms of tensors and the two trees.
@@ -98,10 +58,10 @@ class BroadcastMagic:
         leaves_on_b = jax.tree_util.tree_leaves(operand_b)
         if len(leaves_on_a) != len(leaves_on_b):
             msg = """
-            An issue was encountered while executing a binary
-            operation. It was expected the operations were to be performed
-            on pytrees of the same shape, but the number of leaves were different
-            """
+                An issue was encountered while executing a binary
+                operation. It was expected the operations were to be performed
+                on pytrees of the same shape, but the number of leaves were different
+                """
             msg = utils.format_error_message(msg, context_msg)
             raise RuntimeError(msg)
 
@@ -121,14 +81,58 @@ class BroadcastMagic:
 
             except Exception as err:
                 msg = f"""
-                An issue occurred while trying to execute the operator. It failed
-                while attempting to execute the operators on leafs '{i}'
-                """
+                    An issue occurred while trying to execute the operator. It failed
+                    while attempting to execute the operators on leafs '{i}'
+                    """
                 msg = utils.format_error_message(msg, context_msg)
                 raise RuntimeError(msg) from err
             output.append(result)
 
         return jax.tree_util.tree_unflatten(tree_def, output)
+
+    def __add__(self,
+                other: 'BroadcastMagic'
+                )->'BroadcastMagic':
+        context_error_message = "Issue encountered during left addition in BroadcastMagic"
+        new_state = self.execute_binary_operator(jnp.add,
+                                                 self.state,
+                                                 other.state,
+                                                 context_error_message)
+        return BroadcastMagic(new_state)
+
+    def __radd__(self,
+                 other: 'BroadcastMagic'
+                 )->'BroadcastMagic':
+        context_error_message = "Issue was encountered during right addition in BroadcastMagic"
+        new_state = self.execute_binary_operator(jnp.add,
+                                                 self.state,
+                                                 other.state,
+                                                 context_error_message)
+        return BroadcastMagic(new_state)
+
+    def __sub__(self,
+                other:
+                )->'BroadcastMagic':
+        context_error_message = "Issue was encountered during left subtraction in BroadcastMagic"
+        new_state = self.execute_binary_operator(jnp.subtract,
+                                                 self.state,
+                                                 other.state
+                                                  context_error_message)
+        return BroadcastMagic(new_state)
+
+    def __rsub__(self,
+                 other: 'BroadcastMagic'
+                 )->'BroadcastMagic':
+        context_error_message = "Issue was encountered during right subtraction in BroadcastMagic"
+        new_state = self.execute_binary_operator(jnp.subtract,
+                                                 other.state,
+                                                 self.state,
+                                                 context_error_message)
+        return BroadcastMagic(new_state)
+
+    def __mul__(self,
+                other):
+
 
     @staticmethod
     def perform_unitary_operation(operator: Callable[[jnp.ndarray], jnp.ndarray],

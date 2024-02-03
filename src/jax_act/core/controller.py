@@ -58,7 +58,6 @@ class ACT_Controller(Immutable):
     is_any_halted: If at least one batch element is halted, this is true.
     updates_ready_to_commit: True if all accumulators have updates pending
     has_cached_updates: True if any accumulator has updates pending
-
     ----- Main Methods -----
 
     Main methods are designed to be used as part of your act
