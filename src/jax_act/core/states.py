@@ -19,8 +19,7 @@ class ACTStates:
 
     ---- fields ---
     epsilon: A float, used to calculate a halting threshold.
-
-    iterations: A batch shaped tensor, counting how many iterations have been done per batch
+    iterations: A batch shaped tensor. It is actually of floating dtype.
     residuals: Holds accumulated residuals during the act process.
     probabilities: Holds cumulative probabilities during the act process
     defaults: Holds the reset defaults during the act process, in case you reset just a channel.

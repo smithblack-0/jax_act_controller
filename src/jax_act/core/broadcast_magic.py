@@ -5,9 +5,41 @@ underlying state in terms of probabilities broadcast across
 internal tensors.
 
 The general idea is if you have ControllerA, and ControllerB, it would
-be nice for downstream arithmetic sometimes to be able to do:
+be nice for downstream arithmetic sometimes to be able to do something like:
 
-0.3*ControllerA + 0.7*ControllerB
+0.3*ControllerA + 0.7*ControllerB\
+
+Mathematical Rules of Operation:
+    We define a new object, called a BroadcastEditor, which has the following fields.
+
+    1) It contains within it a boolean config, one element per
+
+Initialization and configuration:
+    BroadcastEditors are initialize with a configuration that tells you what features of
+    the internal state an operand will be replicated across when attempting to apply
+    a supported operation.
+
+    For example, with config of only accumulators=True,
+    trying to add jnp.ones([2]) will just add that tensor to each element of the pytree in
+    the accumulators. This might work, depending on your scenario. Meanwhile, if you try
+    try the same thing but with (accumulators=True, epsilon=True) you will end up with a
+    tensor of epsilons, which is not exactly valid.
+
+
+Initialization:
+   -
+   -
+General design:
+1) When a BroadcastEditor is created, you specify what of the features of ACTStates will be
+   edited. These will be broadcasted into by magic action, and so should be thought about carefully
+2) In order to perform __magic__ action between two BroadcastEditor instances, all non-edited features
+   must be exactly the same. This will mean that if you do not edit the probabilities involved,
+   for instance, they are unlikely to line up allowing you to combine the results. This prevents
+   ambiguity: If you have BEditor1, or BEditor2, should you keep the probabities from 1 or 2?
+3) If you manually call into a BroadcastEditor operator with another BroadcastEditor, any
+1) You may not combine controllers together unless both BroadcastEditing's allow editing of all
+internal state features, so clean interpolation is possible.
+2) You may, when not
 """
 
 import jax
@@ -16,11 +48,20 @@ from src.jax_act.core.types import PyTree
 from src.jax_act.core.controller import ACT_Controller
 from src.jax_act.core.states import ACTStates
 from src.jax_act.core import utils
-from typing import Callable, Union
+from typing import Callable, Union, Tuple, Any
 
 PyTree = Union[PyTree, ACTStates]
 
-class BroadcastMagic:
+@dataclass
+class
+
+class BroadcastEditing:
+    """
+    Allows for the easy manipulate of the entire
+    controller state by probabilities.
+
+
+    """
     # TODO:
     #    - Properties passthroughs
     #    - Methods:
@@ -30,7 +71,28 @@ class BroadcastMagic:
     #        - Various magic methods
     #    - Docstring
 
+    def _broadcast_pytrees_to_compatible(operand_a: PyTree,
+                                         operand_b: PyTree)->Tuple[PyTree, PyTree]:
+        # The pytree with leaves should be broadcast
+        # to match the shape of the one with many
 
+        num_a_leaves = len(jax.tree_util.tree_leaves(operand_a))
+        num_b_leaves = len(jax.tree_util.tree_leaves(operand_b))
+        if num_a_leaves > num_b_leaves:
+            # Operand a has more leaves than b. We conclude there is
+            # a one-to-many relations between leaves of b and a.
+            #
+            # We change b to be compatible and have the same tree shape.
+            # Then we flesh out any remaining conflicts during left
+            # broadcasting
+            operand_b = utils.broadcast_pytree_shape(operand_b,target_structure=operand_a)
+        else:
+            # Operand b has more leaves than a. We conclude there is
+            # a one-to-many relations between leaves of a and n.
+            #
+            # We change a to have the same tree shape and have compatible tensors.
+            operand_a = utils.broadcast_pytree_shape(operand_a,target_structure=operand_b)
+        return operand_a, operand_b
 
     @classmethod
     def execute_binary_operator(cls,
@@ -53,17 +115,20 @@ class BroadcastMagic:
         :return: A pytree shaped like a and b, where every leaf is the result of
                  putting leaf_a and leaf_b through the operator
         """
+
+        try:
+            operand_a, operand_b = cls._broadcast_pytrees_to_compatible(operand_a, operand_b)
+        except Exception as err:
+            msg = """
+            An issue occurred while setting up the pytrees composing
+            the two operands to be compatible.
+            """
+            msg = utils.format_error_message(msg, context_msg)
+            raise RuntimeError(msg) from err
+
         tree_def = jax.tree_util.tree_structure(operand_a)
         leaves_on_a = jax.tree_util.tree_leaves(operand_a)
         leaves_on_b = jax.tree_util.tree_leaves(operand_b)
-        if len(leaves_on_a) != len(leaves_on_b):
-            msg = """
-                An issue was encountered while executing a binary
-                operation. It was expected the operations were to be performed
-                on pytrees of the same shape, but the number of leaves were different
-                """
-            msg = utils.format_error_message(msg, context_msg)
-            raise RuntimeError(msg)
 
         output = []
         for i, (leaf_a, leaf_b) in enumerate(zip(leaves_on_a, leaves_on_b)):
@@ -72,7 +137,7 @@ class BroadcastMagic:
                 # We need to make sure left broadcast works properly.
                 #
                 # To do this we find the tensor with the most dimensions, and
-                # broadcast to match
+                # attempt to broadcast to match
                 if leaf_a.ndim > leaf_b.ndim:
                     leaf_b = utils.setup_left_broadcast(leaf_b, target=leaf_a)
                 elif leaf_a.ndim < leaf_b.ndim:
@@ -89,53 +154,8 @@ class BroadcastMagic:
             output.append(result)
 
         return jax.tree_util.tree_unflatten(tree_def, output)
-
-    def __add__(self,
-                other: 'BroadcastMagic'
-                )->'BroadcastMagic':
-        context_error_message = "Issue encountered during left addition in BroadcastMagic"
-        new_state = self.execute_binary_operator(jnp.add,
-                                                 self.state,
-                                                 other.state,
-                                                 context_error_message)
-        return BroadcastMagic(new_state)
-
-    def __radd__(self,
-                 other: 'BroadcastMagic'
-                 )->'BroadcastMagic':
-        context_error_message = "Issue was encountered during right addition in BroadcastMagic"
-        new_state = self.execute_binary_operator(jnp.add,
-                                                 self.state,
-                                                 other.state,
-                                                 context_error_message)
-        return BroadcastMagic(new_state)
-
-    def __sub__(self,
-                other:
-                )->'BroadcastMagic':
-        context_error_message = "Issue was encountered during left subtraction in BroadcastMagic"
-        new_state = self.execute_binary_operator(jnp.subtract,
-                                                 self.state,
-                                                 other.state
-                                                  context_error_message)
-        return BroadcastMagic(new_state)
-
-    def __rsub__(self,
-                 other: 'BroadcastMagic'
-                 )->'BroadcastMagic':
-        context_error_message = "Issue was encountered during right subtraction in BroadcastMagic"
-        new_state = self.execute_binary_operator(jnp.subtract,
-                                                 other.state,
-                                                 self.state,
-                                                 context_error_message)
-        return BroadcastMagic(new_state)
-
-    def __mul__(self,
-                other):
-
-
     @staticmethod
-    def perform_unitary_operation(operator: Callable[[jnp.ndarray], jnp.ndarray],
+    def execute_unitary_operation(operator: Callable[[jnp.ndarray], jnp.ndarray],
                                   operand: PyTree,
                                   context_message
                                   )->PyTree:
@@ -161,6 +181,20 @@ class BroadcastMagic:
                 raise RuntimeError(msg) from err
             output.append(result)
         return jax.tree_util.tree_unflatten(tree_def, output)
+    def __add__(self,
+                other: Union[PyTree, 'BroadcastEditing']
+                )-> 'BroadcastEditing':
+        context_error_message = "Issue encountered during left addition in BroadcastMagic"
+
+
+
+        other = other.state if isinstance(other, BroadcastEditing) else other
+        new_state = self.execute_binary_operator(jnp.add,
+                                                 self.state,
+                                                 other,
+                                                 context_error_message)
+        return BroadcastEditing(new_state)
+
 
 
 

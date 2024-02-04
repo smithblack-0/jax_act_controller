@@ -437,7 +437,7 @@ class ControllerBuilder(Immutable):
 
         probabilities = jnp.zeros(batch_shape, core_dtype)
         residuals = jnp.zeros(batch_shape, core_dtype)
-        iterations = jnp.zeros(batch_shape, jnp.int32)
+        iterations = jnp.zeros(batch_shape, core_dtype)
 
         accumulators = {}
         defaults = {}
