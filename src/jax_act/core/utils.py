@@ -127,37 +127,6 @@ def are_pytrees_equal(tree_one: PyTree, tree_two: PyTree, use_allclose: bool = T
     result_tree = merge_pytrees(are_leaves_equal, tree_one, tree_two)
     leaves = jax.tree_util.tree_flatten(result_tree)[0]
     return all(leaves)
-
-@dataclass
-class node_view:
-    node_position: int
-    num_children: int
-def _traverse_pytree(source: PyTreeDef,
-                     target: PyTree,
-                     )->:
-    """
-    Objective is to return where you saw
-    :param source:
-    :param target:
-    :return:
-    """
-    if jax.tree_util.treedef_is_leaf(source) and jax.tree_util.treedef_is_leaf(target):
-        return node_view(0, 1)
-
-class node_repeater:
-    def __init__(self,
-                 source_leaves: List[Any],
-                 output: Optional[List[Any]] = None
-                 ):
-        if output is None:
-            output = []
-
-        self.source_leaves = source_leaves
-        self.output = output
-        self.node = 0
-    def repeat_source(self, num_times: int):
-
-
 def _repeat_node(source_leaf: jnp.ndarray,
                 num_times: int
                 )->List[jnp.ndarray]:
@@ -183,7 +152,7 @@ def _count_linked_leaves(treedef: PyTreeDef)->int:
 
 def _replicate_leaves(source_treedef: PyTreeDef,
                       target_treedef: PyTreeDef,
-                      leaves: List[jnp.ndarray],
+                      source_leaves_queue: List[jnp.ndarray],
                       context_message: str,
                       )->Tuple[List[jnp.ndarray], List[jnp.ndarray]]:
     """
@@ -197,7 +166,12 @@ def _replicate_leaves(source_treedef: PyTreeDef,
 
     :param source_treedef: The tree_def from the source tree at the current node
     :param target_treedef: The tree_def from the target tree at the current node
-    :param source_leaf_reservour: The current leaves we have to draw on
+    :param source_leaves_queue: An exit_only queue containing the leaves which may
+           need to be duplicated.
+
+           Since the underlying datestructure is such that each leaf in source can
+           have a one-to-many map to target leaves, it is the case that once a leaf
+           is used it is removed from the queue.
     :return:
         - A list of arrays, representing properly replicated leaves ready for broadcast
         - A list of arrays, representing what leaves are currently left over. Should be used to update
@@ -212,14 +186,25 @@ def _replicate_leaves(source_treedef: PyTreeDef,
     #
     # This is all well and good, and if the tools supported it this is how we would do
     # this. However, the API is not so nice. Instead, we do something that effectively behaves
-    # the same way.
+    # the same way. We duplicate leaves.
     #
+    # When we encounter a tensor leaf on the source tree, we count how many leaves are
+    # on the target tree at that same node, then duplicate the source node this many
+    # times. This is put into a new list of leafs that is then parsable with the target
+    # tree structure in jax.tree_util.tree_unflatten
 
+    # Base case.
+    #
+    # When the source node is a leaf,
+    # we repeat that node a certain number of times and
+    # return.
 
+    source_leaves_queue = source_leaves_queue.copy()
     if jax.tree_util.treedef_is_leaf(source_treedef):
-
+        node_to_repeat = source_leaves_queue.pop(0)
         num_times_to_repeat = _count_linked_leaves(target_treedef)
-        return _repeat_node(leaves[0], num_times_to_repeat), leaves[1:]
+        updated_source_leaves_section = _repeat_node(node_to_repeat, num_times_to_repeat)
+        return updated_source_leaves_section, source_leaves_queue
     elif jax.tree_util.treedef_is_leaf(target_treedef):
         msg = """
         Source tree was not broadcastable.
@@ -231,6 +216,16 @@ def _replicate_leaves(source_treedef: PyTreeDef,
         """
         msg = format_error_message(msg, context_message)
         raise RuntimeError(msg)
+
+    # We skipped the base case. That should mean that
+    # no leaf was found in source, which means we need to
+    # walk the trees in parallel going deeper.
+    #
+    # We fetch the children from both trees, walk through them
+    # recursively, and update our output as we find the expanded
+    # leaf sections. We also update the leaves queue in a
+    # functional fashion as we go. Once all the leaves have been
+    # remapped to be one-to-one, we return the result.
 
     source_children = jax.tree_util.treedef_children(source_treedef)
     target_children = jax.tree_util.treedef_children(target_treedef)
@@ -249,7 +244,11 @@ def _replicate_leaves(source_treedef: PyTreeDef,
     output = []
     for i, (source_node, target_node) in enumerate(zip(source_children, target_children)):
         try:
-            update, leaves = _replicate_leaves(source_node, target_node, leaves, context_message)
+
+            update, source_leaves_queue = _replicate_leaves(source_node,
+                                                           target_node,
+                                                           source_leaves_queue,
+                                                           context_message)
             output += update
         except Exception as err:
             msg = f"""
@@ -261,7 +260,7 @@ def _replicate_leaves(source_treedef: PyTreeDef,
             msg += "\nOn target pytree: \n{%s}" % target_treedef
             msg = format_error_message(msg, context_message)
             raise RuntimeError(msg) from err
-    return output, leaves
+    return output, source_leaves_queue
 
 def can_right_broadcast(array_a: jnp.ndarray,
                         array_b: jnp.ndarray
@@ -300,9 +299,9 @@ def can_right_broadcast(array_a: jnp.ndarray,
     return True
 
 def setup_broadcast_pytree(source: PyTree,
-                         target: PyTree,
-                         broadcast_mode: str,
-                         )->PyTree:
+                           target: PyTree,
+                           broadcast_mode: str,
+                           )->PyTree:
     """
     A function for broadcasting pytrees such
     that their shapes become compatible.

@@ -1,4 +1,6 @@
 import unittest
+
+import jax.tree_util
 from numpy import random
 
 from src.jax_act.core import utils
@@ -70,4 +72,45 @@ class test_utilities(unittest.TestCase):
 
         outcome = utils.merge_pytrees(operator, tree, tree2)
         self.assertTrue(jnp.allclose(outcome['item'], expected['item']))
+
+class test_broadcast_pytree(unittest.TestCase):
+    """
+    broadcast_pytree has complicated behavior with multiple
+    helper functions. It needs its own test suite
+    """
+    def test_repeat_node(self):
+        """Test that repeat node does it's namesake"""
+        item = 1
+        first, second, third = utils._repeat_node(item, 3)
+
+        #Yes, should be is. We want the references to be the same
+        self.assertTrue(item is first)
+        self.assertTrue(item is second)
+        self.assertTrue(item is third)
+    def test_count_linked_leaves(self):
+        """Test that count linked leaves detects the proper number of leaves on a pytree"""
+
+        # Test edge case: No leaf
+        tree = []
+        _, tree_def = jax.tree_util.tree_flatten(tree)
+        count = utils._count_linked_leaves(tree_def)
+        self.assertTrue(count == 0)
+
+        # Test case: One leaf
+        tree = [3]
+        _, tree_def = jax.tree_util.tree_flatten(tree)
+        count = utils._count_linked_leaves(tree_def)
+        self.assertTrue(count == 1)
+
+        # Test case: Three leaves
+        tree = [3, {"1" : 1, "2" : 2}]
+        _, tree_def = jax.tree_util.tree_flatten(tree)
+        count = utils._count_linked_leaves(tree_def)
+        self.assertTrue(count == 3)
+    def test_replicate_leaves(self):
+        """ Test for replicate leaves"""
+
+        see = utils._replicate_leaves()
+
+
 
