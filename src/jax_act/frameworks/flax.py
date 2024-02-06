@@ -6,6 +6,8 @@ from src.jax_act import ACT_Controller, PyTree
 
 class FlaxACTLayer(AbstractACTTemplate, nn.Module):
     """
+
+
     """
     #TODO: Make docstring for class
 

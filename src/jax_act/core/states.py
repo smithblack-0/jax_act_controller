@@ -2,14 +2,15 @@
 INTERNAL: Code in this section is entirely internal,
 and subject to change on a whim.
 """
-
+import textwrap
 
 import jax
 from dataclasses import dataclass, asdict
 from typing import Dict, Optional, Any, Tuple
 from jax import numpy as jnp
+from jax.experimental import checkify
 from src.jax_act.core.types import PyTree
-
+from src.jax_act.core import utils
 
 @dataclass
 class ACTStates:
@@ -18,7 +19,7 @@ class ACTStates:
     stateful items needed to perform adaptive computation time.
 
     ---- fields ---
-    epsilon: A float, used to calculate a halting threshold.
+    epsilon: A float, used to calculate a halting threshold. Should be a probability
     iterations: A batch shaped tensor. It is actually of floating dtype.
     residuals: Holds accumulated residuals during the act process.
     probabilities: Holds cumulative probabilities during the act process
@@ -26,6 +27,29 @@ class ACTStates:
     accumulators: Holds the accumulated values.
     updates: Holds the accumulator updates while they are getting gathered.
     """
+    @utils.jit_and_checkify
+    def replace_epsilon(self, epsilon: float)->'ACTStates':
+        """
+        A validated epsilon replacement, using checkify.
+
+        :param epsilon: The epsilon to replace with
+        :return: A new ACTStates
+        """
+        msg = f"""
+        Attempt to update epsilon failed. Epsilon
+        should be between 0 and 1, got '{epsilon}'
+        """
+        msg = textwrap.dedent(msg)
+        checkify.check(epsilon <= 1.0, msg)
+        checkify.check(epsilon >= 0.0, msg)
+        return self.replace(epsilon=epsilon)
+
+    def replace_iterations(self, iterations: jnp.ndarray)->'ACTStates':
+        """
+        A validated replacement of the iterations parameter
+        :param iterations:
+        :return:
+        """
     def replace(self,
                 epsilon: Optional[float] = None,
                 iterations: Optional[jnp.ndarray] = None,
@@ -38,7 +62,8 @@ class ACTStates:
                 )->'ACTStates':
         """
         Replace one or more feature, while leaving everything else
-        the exact same.
+        the exact same. This is entirely unvalidated for speed.
+
         :return: A new ACT states
         """
         if epsilon is None:
@@ -74,9 +99,6 @@ class ACTStates:
     accumulators: Dict[str, PyTree]
     updates: Dict[str, Optional[PyTree]]
     depression_constant: float
-
-
-
 
 # We define the functions to represent states as a pytree,
 # and then register the tree.

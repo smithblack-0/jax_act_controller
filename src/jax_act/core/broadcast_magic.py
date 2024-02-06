@@ -4,42 +4,29 @@ A manipulator designed to allow the easy manipulation of
 underlying state in terms of probabilities broadcast across
 internal tensors.
 
-The general idea is if you have ControllerA, and ControllerB, it would
-be nice for downstream arithmetic sometimes to be able to do something like:
 
-0.3*ControllerA + 0.7*ControllerB\
+Mathematical Ideal:
+    We define a new operand object, called a BroadcastEditor, which has the following fields.
 
-Mathematical Rules of Operation:
-    We define a new object, called a BroadcastEditor, which has the following fields.
+    1) A field called states containing an ACTStates. This will be updated
+    2) A field called config containing a sequence of boolean entries, one per element
+       of states.
 
-    1) It contains within it a boolean config, one element per
+    An underlying act feature is said to be "on" or being "edited" when
+    it's corresponding configuration action is on. Operators are updated
+    with regards to this operand object to function as follows:
 
-Initialization and configuration:
-    BroadcastEditors are initialize with a configuration that tells you what features of
-    the internal state an operand will be replicated across when attempting to apply
-    a supported operation.
+    - An operation between a tensor and a BroadcastEditor is equal to distributing
+      the operation onto all active config states, executing against all tensor collections,
+      then rebuilding the broadcast editor
+    - An operation between a tensor collection, or "PyTree", is equal to attempting
+      to broadcast the pytree between all active config states.
+    - An operation between a BroadcastEditor and a BroadcastEditor is only possible
+      so long as the configs are identical and the inactive states are identical.
+    - All operations return a new instance of BroadcastEditor with the updates applied.
 
-    For example, with config of only accumulators=True,
-    trying to add jnp.ones([2]) will just add that tensor to each element of the pytree in
-    the accumulators. This might work, depending on your scenario. Meanwhile, if you try
-    try the same thing but with (accumulators=True, epsilon=True) you will end up with a
-    tensor of epsilons, which is not exactly valid.
-
-
-Initialization:
-   -
-   -
-General design:
-1) When a BroadcastEditor is created, you specify what of the features of ACTStates will be
-   edited. These will be broadcasted into by magic action, and so should be thought about carefully
-2) In order to perform __magic__ action between two BroadcastEditor instances, all non-edited features
-   must be exactly the same. This will mean that if you do not edit the probabilities involved,
-   for instance, they are unlikely to line up allowing you to combine the results. This prevents
-   ambiguity: If you have BEditor1, or BEditor2, should you keep the probabities from 1 or 2?
-3) If you manually call into a BroadcastEditor operator with another BroadcastEditor, any
-1) You may not combine controllers together unless both BroadcastEditing's allow editing of all
-internal state features, so clean interpolation is possible.
-2) You may, when not
+    Additionally, do not expect the class to yell at you if you are inverting your probabilities
+    either.
 """
 
 import jax
@@ -49,11 +36,10 @@ from src.jax_act.core.controller import ACT_Controller
 from src.jax_act.core.states import ACTStates
 from src.jax_act.core import utils
 from typing import Callable, Union, Tuple, Any
-
+from dataclasses import dataclass
 PyTree = Union[PyTree, ACTStates]
 
-@dataclass
-class
+
 
 class BroadcastEditing:
     """

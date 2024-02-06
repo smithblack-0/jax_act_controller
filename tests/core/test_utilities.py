@@ -90,6 +90,10 @@ class test_utilities(unittest.TestCase):
         outcome = utils.merge_pytrees(operator, tree, tree2)
         self.assertTrue(jnp.allclose(outcome['item'], expected['item']))
 
+class test_checkify_wrapper(unittest.TestCase):
+    """
+    The checkify wrapper is an extremely important part of how
+    """
 class test_broadcast_pytree(unittest.TestCase):
     """
     broadcast_pytree has complicated behavior with multiple

@@ -5,6 +5,7 @@ import textwrap
 import numpy as np
 
 from jax import numpy as jnp
+from jax.experimental import checkify
 from jax.tree_util import PyTreeDef
 from src.jax_act.core.types import PyTree
 
@@ -21,6 +22,22 @@ def format_error_message(message: str, context: str)->str:
     message = textwrap.dedent(message)
     message = textwrap.indent(message, "    ")
     return context + "\n" + message
+
+def jit_and_checkify(function: Callable)->Callable:
+    """
+    A utility wrapper for working with the jax
+    checkification library, this will catch,
+    and raise like normal, checkification errors.
+
+    Hopefully
+    """
+    checkified_function = checkify.checkify(function)
+    jitted_function = jax.jit(checkified_function)
+    def checkify_wrapper(*args, **kwargs):
+        errors, output = jitted_function(*args, **kwargs)
+        errors.throw()
+        return output
+    return checkify_wrapper
 
 def setup_left_broadcast(tensor: jnp.ndarray,
                           target: jnp.ndarray
@@ -55,7 +72,8 @@ def merge_pytrees(function: Callable[[Any,
     Used to merge two pytrees together.
 
     This deterministically walks the primary and auxilary
-    trees, then calls function when like leaves are reached. The
+    trees, then calls function when like leaves a
+    re reached. The
     results are created into a new tree.
 
     :param function: A function that accepts first a primary leaf, then a auxilary leaf
@@ -425,7 +443,7 @@ def broadcast_pytree_shape(source: PyTree,
 
     :param source: The tree to start from
     :param target_structure: The tree to try to broadcast to
-    :return: A broadcast tree. It is guarenteed to have a tree shape that matches one-to-one
+    :return: A broadcast tree. It is guaranteed to have a tree shape that matches one-to-one
              with target if successful. The leaves can be walked cleanly together.
     """
 
