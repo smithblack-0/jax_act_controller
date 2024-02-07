@@ -33,15 +33,14 @@ import jax
 from jax import numpy as jnp
 from src.jax_act.core.types import PyTree
 from src.jax_act.core.controller import ACT_Controller
-from src.jax_act.core.states import ACTStates
+from src.jax_act.core.states import ACTStates, EditorConfig
 from src.jax_act.core import utils
 from typing import Callable, Union, Tuple, Any
 from dataclasses import dataclass
 PyTree = Union[PyTree, ACTStates]
 
 
-
-class BroadcastEditing:
+class BroadcastEditor:
     """
     Allows for the easy manipulate of the entire
     controller state by probabilities.
@@ -56,30 +55,6 @@ class BroadcastEditing:
     #        - Various arithmetic methods
     #        - Various magic methods
     #    - Docstring
-
-    def _broadcast_pytrees_to_compatible(operand_a: PyTree,
-                                         operand_b: PyTree)->Tuple[PyTree, PyTree]:
-        # The pytree with leaves should be broadcast
-        # to match the shape of the one with many
-
-        num_a_leaves = len(jax.tree_util.tree_leaves(operand_a))
-        num_b_leaves = len(jax.tree_util.tree_leaves(operand_b))
-        if num_a_leaves > num_b_leaves:
-            # Operand a has more leaves than b. We conclude there is
-            # a one-to-many relations between leaves of b and a.
-            #
-            # We change b to be compatible and have the same tree shape.
-            # Then we flesh out any remaining conflicts during left
-            # broadcasting
-            operand_b = utils.broadcast_pytree_shape(operand_b,target_structure=operand_a)
-        else:
-            # Operand b has more leaves than a. We conclude there is
-            # a one-to-many relations between leaves of a and n.
-            #
-            # We change a to have the same tree shape and have compatible tensors.
-            operand_a = utils.broadcast_pytree_shape(operand_a,target_structure=operand_b)
-        return operand_a, operand_b
-
     @classmethod
     def execute_binary_operator(cls,
                                 operator: Callable[[jnp.ndarray, jnp.ndarray], jnp.ndarray],
@@ -167,24 +142,9 @@ class BroadcastEditing:
                 raise RuntimeError(msg) from err
             output.append(result)
         return jax.tree_util.tree_unflatten(tree_def, output)
-    def __add__(self,
-                other: Union[PyTree, 'BroadcastEditing']
-                )-> 'BroadcastEditing':
-        context_error_message = "Issue encountered during left addition in BroadcastMagic"
-
-
-
-        other = other.state if isinstance(other, BroadcastEditing) else other
-        new_state = self.execute_binary_operator(jnp.add,
-                                                 self.state,
-                                                 other,
-                                                 context_error_message)
-        return BroadcastEditing(new_state)
-
-
-
-
-
-
-    def __init__(self, state: ACTStates):
+    def transform(self):
+    def __init__(self,
+                 state: ACTStates,
+                 edit_config: EditorConfig):
         self.state = state
+        self.config = config

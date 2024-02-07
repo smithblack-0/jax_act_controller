@@ -13,6 +13,21 @@ from src.jax_act.core.types import PyTree
 from src.jax_act.core import utils
 
 @dataclass
+def EditorConfig:
+    """
+    A boolean collection of parameters
+    designed to indicate whether a field
+    should be getting edited.
+    """
+    edit_epsilon: bool
+    edit_iterations: bool
+    edit_residuals: bool
+    edit_probabilities: bool
+    edit_accumulator: bool
+    edit_defaults: bool
+    edit_updates: bool
+    edit_depression_constant: bool
+@dataclass
 class ACTStates:
     """
     A collection of ACT state parameters and other
@@ -27,29 +42,6 @@ class ACTStates:
     accumulators: Holds the accumulated values.
     updates: Holds the accumulator updates while they are getting gathered.
     """
-    @utils.jit_and_checkify
-    def replace_epsilon(self, epsilon: float)->'ACTStates':
-        """
-        A validated epsilon replacement, using checkify.
-
-        :param epsilon: The epsilon to replace with
-        :return: A new ACTStates
-        """
-        msg = f"""
-        Attempt to update epsilon failed. Epsilon
-        should be between 0 and 1, got '{epsilon}'
-        """
-        msg = textwrap.dedent(msg)
-        checkify.check(epsilon <= 1.0, msg)
-        checkify.check(epsilon >= 0.0, msg)
-        return self.replace(epsilon=epsilon)
-
-    def replace_iterations(self, iterations: jnp.ndarray)->'ACTStates':
-        """
-        A validated replacement of the iterations parameter
-        :param iterations:
-        :return:
-        """
     def replace(self,
                 epsilon: Optional[float] = None,
                 iterations: Optional[jnp.ndarray] = None,
