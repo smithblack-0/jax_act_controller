@@ -11,7 +11,7 @@ from src.jax_act.core.builder import ControllerBuilder
 from src.jax_act.core.states import ACTStates
 from src.jax_act.core import utils
 
-SHOW_ERROR_MESSAGES = False
+SHOW_ERROR_MESSAGES = True
 
 def make_empty_state_mockup() -> ACTStates:
     return ACTStates(

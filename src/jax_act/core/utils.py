@@ -9,6 +9,7 @@ from jax.experimental import checkify
 from jax.tree_util import PyTreeDef
 from src.jax_act.core.types import PyTree
 
+## Main mechanisms ##
 def format_error_message(message: str, context: str)->str:
     """
     Formats an error message to look nice, with context
@@ -38,6 +39,168 @@ def jit_and_checkify(function: Callable)->Callable:
         errors.throw()
         return output
     return checkify_wrapper
+
+def can_right_broadcast(array_a: jnp.ndarray,
+                        array_b: jnp.ndarray
+                        )->bool:
+    """
+    Test whether or not source array can be broadcast with
+    target array. Return bool.
+
+    Broadcasting considers dimensions when tensors are aligned with dimensions
+    to the right. In this configuration, the tensors are broadcastable if,
+    for each overlapping dimensions:
+        1) The dimensions are equal
+        2) Or one of them is equal to one
+
+    See numpy broadcasting for details.
+
+    :param array_a: Array we will try to broadcast
+    :param array_b: Array we need to be able to broadcast to
+    :return: a bool
+    """
+
+    broadcast_overlap = min(array_a.ndim, array_b.ndim)
+    if broadcast_overlap == 0:
+        # Scalar arrays can always be broadcast
+        return True
+
+    # Both arrays are at least 1d. Check overlapping region
+    relevant_a_shape = array_a.shape[-broadcast_overlap:]
+    relevant_b_shape = array_b.shape[-broadcast_overlap:]
+    for a_dim, b_dim in zip(relevant_a_shape, relevant_b_shape):
+        if (a_dim == 1) or (b_dim == 1):
+            continue
+        if a_dim == b_dim:
+            continue
+        return False
+    return True
+
+def broadcast_pytree_shape(source: PyTree,
+                           target_structure: PyTree,
+                           )->PyTree:
+    """
+    A function for broadcasting pytrees such
+    that their shapes become compatible.
+
+    This operates similar to normal broadcasting, except it is pytree
+    speficic and assumes that when a node is a leaf on the source tree,
+    and the target tree structure has a branch there, you want to
+    fill a structure like the target branch with the source node.
+
+    As a simple example, consider a pair of trees consisting of tree_a, just a tensor,
+     and tree_b, a list of tensors. This would be the following
+
+    tree_a = tensor_1a
+    tree_b = [tensor_1b,tensor_2b]
+
+    If we perform broadcast_pytree(tree_a, target=tree_b), the result will end
+    up being like:
+
+    output = [tensor_1a, target = tensor_1b,
+              tensor_1a, target=tensor_2b
+             ]
+
+    Notice the PyTree structure at the end now matches tree_b, with the node in that tree
+    determining exactly how we are broadcasting!
+
+    :param source: The tree to start from
+    :param target_structure: The tree to try to broadcast to
+    :return: A broadcast tree. It is guaranteed to have a tree shape that matches one-to-one
+             with target if successful. The leaves can be walked cleanly together.
+    """
+
+    # We use jax.tree_utils.tree_unflatten to get this job done.
+    #
+    # Context for this is that jax.tree_util.flatten uses depth
+    # first traversal when flattening, and the nodes are
+    # manipulated while flat.
+    #
+    # Nodes must be approached in two ways to make that work. First,
+    # each source node is compared to the state of the tree of the
+    # target pytree at the same location. We track down how many children
+    # are attached to the node at target, then repeat the source node
+    # that many times. This ensures one source node is corrolated
+    # for each target node
+
+    error_context = "An issue occurred while trying to broadcast two pytrees together: "
+    source_leaves, source_treedef = jax.tree_util.tree_flatten(source)
+    target_leaves, target_treedef = jax.tree_util.tree_flatten(target_structure)
+
+    # Replicates source leaves when one source leaf corresponds to multiple leaves in the
+    # target tree def. This ensures the number of leaves is correct.
+    final_leaves, remainder = _replicate_leaves(source_treedef, target_treedef, source_leaves, error_context)
+    assert len(final_leaves) == len(target_leaves), "error 1: This should never happen. Yell at maintainer"
+    assert len(remainder) == 0, "error 2: This should never happen. Yell at maintainer"
+    return jax.tree_util.tree_unflatten(target_treedef, final_leaves)
+
+
+def execute_binary_operator(operator: Callable[[jnp.ndarray, jnp.ndarray], jnp.ndarray],
+                            operand_a: PyTree,
+                            operand_b: PyTree,
+                            context_msg: str
+                            ) -> PyTree:
+    """
+    Performs a binary operation across two pytrees with same treedef
+    using an operator defined in terms of tensors and the two trees.
+
+    Importantly, we also promise to left broadcast where needed,
+    rather than the traditional right broadcast. This turns out to
+    work much better when dealing with probabilities.
+
+    :param operator: The operator to apply.
+    :param operand_a: A PyTree with the same shape as b
+    :param operand_b: A PyTree with the same shape as a
+    :return: A pytree shaped like a and b, where every leaf is the result of
+             putting leaf_a and leaf_b through the operator
+    """
+    try:
+        # It is hard to tell whether to broadcast operand_a to be of
+        # pytree shape b, or operand_b to be of shape a.
+        #
+        # This tries both.
+        try:
+            operand_a = broadcast_pytree_shape(operand_a, operand_b)
+        except RuntimeError:
+            operand_b = broadcast_pytree_shape(operand_b, operand_a)
+
+    except Exception as err:
+        msg = """
+        An issue occurred while setting up the pytrees composing
+        the two operands to be compatible.
+        """
+        msg = format_error_message(msg, context_msg)
+        raise RuntimeError(msg) from err
+
+    tree_def = jax.tree_util.tree_structure(operand_a)
+    leaves_on_a = jax.tree_util.tree_leaves(operand_a)
+    leaves_on_b = jax.tree_util.tree_leaves(operand_b)
+
+    output = []
+    for i, (leaf_a, leaf_b) in enumerate(zip(leaves_on_a, leaves_on_b)):
+
+        try:
+            # We need to make sure left broadcast works properly.
+            #
+            # To do this we find the tensor with the most dimensions, and
+            # attempt to broadcast to match
+            if leaf_a.ndim > leaf_b.ndim:
+                leaf_b = setup_left_broadcast(leaf_b, target=leaf_a)
+            elif leaf_a.ndim < leaf_b.ndim:
+                leaf_a = setup_left_broadcast(leaf_a, target=leaf_b)
+            result = operator(leaf_a, leaf_b)
+
+        except Exception as err:
+            msg = f"""
+                An issue occurred while trying to execute the operator. It failed
+                while attempting to execute the operators on leafs '{i}'
+                """
+            msg = format_error_message(msg, context_msg)
+            raise RuntimeError(msg) from err
+        output.append(result)
+
+    return jax.tree_util.tree_unflatten(tree_def, output)
+
 
 def setup_left_broadcast(tensor: jnp.ndarray,
                           target: jnp.ndarray
@@ -148,6 +311,8 @@ def are_pytrees_equal(tree_one: PyTree, tree_two: PyTree, use_allclose: bool = T
     result_tree = merge_pytrees(are_leaves_equal, tree_one, tree_two)
     leaves = jax.tree_util.tree_flatten(result_tree)[0]
     return all(leaves)
+
+## Internal Utility
 def _repeat_node(source_leaf: jnp.ndarray,
                 num_times: int
                 )->List[jnp.ndarray]:
@@ -377,98 +542,6 @@ def _replicate_leaves(source_treedef: PyTreeDef,
             raise RuntimeError(msg) from err
     return output, source_leaves_queue
 
-def can_right_broadcast(array_a: jnp.ndarray,
-                        array_b: jnp.ndarray
-                        )->bool:
-    """
-    Test whether or not source array can be broadcast with
-    target array. Return bool.
 
-    Broadcasting considers dimensions when tensors are aligned with dimensions
-    to the right. In this configuration, the tensors are broadcastable if,
-    for each overlapping dimensions:
-        1) The dimensions are equal
-        2) Or one of them is equal to one
-
-    See numpy broadcasting for details.
-
-    :param array_a: Array we will try to broadcast
-    :param array_b: Array we need to be able to broadcast to
-    :return: a bool
-    """
-
-    broadcast_overlap = min(array_a.ndim, array_b.ndim)
-    if broadcast_overlap == 0:
-        # Scalar arrays can always be broadcast
-        return True
-
-    # Both arrays are at least 1d. Check overlapping region
-    relevant_a_shape = array_a.shape[-broadcast_overlap:]
-    relevant_b_shape = array_b.shape[-broadcast_overlap:]
-    for a_dim, b_dim in zip(relevant_a_shape, relevant_b_shape):
-        if (a_dim == 1) or (b_dim == 1):
-            continue
-        if a_dim == b_dim:
-            continue
-        return False
-    return True
-
-def broadcast_pytree_shape(source: PyTree,
-                           target_structure: PyTree,
-                           )->PyTree:
-    """
-    A function for broadcasting pytrees such
-    that their shapes become compatible.
-
-    This operates similar to normal broadcasting, except it is pytree
-    speficic and assumes that when a node is a leaf on the source tree,
-    and the target tree structure has a branch there, you want to
-    fill a structure like the target branch with the source node.
-
-    As a simple example, consider a pair of trees consisting of tree_a, just a tensor,
-     and tree_b, a list of tensors. This would be the following
-
-    tree_a = tensor_1a
-    tree_b = [tensor_1b,tensor_2b]
-
-    If we perform broadcast_pytree(tree_a, target=tree_b), the result will end
-    up being like:
-
-    output = [tensor_1a, target = tensor_1b,
-              tensor_1a, target=tensor_2b
-             ]
-
-    Notice the PyTree structure at the end now matches tree_b, with the node in that tree
-    determining exactly how we are broadcasting!
-
-    :param source: The tree to start from
-    :param target_structure: The tree to try to broadcast to
-    :return: A broadcast tree. It is guaranteed to have a tree shape that matches one-to-one
-             with target if successful. The leaves can be walked cleanly together.
-    """
-
-    # We use jax.tree_utils.tree_unflatten to get this job done.
-    #
-    # Context for this is that jax.tree_util.flatten uses depth
-    # first traversal when flattening, and the nodes are
-    # manipulated while flat.
-    #
-    # Nodes must be approached in two ways to make that work. First,
-    # each source node is compared to the state of the tree of the
-    # target pytree at the same location. We track down how many children
-    # are attached to the node at target, then repeat the source node
-    # that many times. This ensures one source node is corrolated
-    # for each target node
-
-    error_context = "An issue occurred while trying to broadcast two pytrees together: "
-    source_leaves, source_treedef = jax.tree_util.tree_flatten(source)
-    target_leaves, target_treedef = jax.tree_util.tree_flatten(target_structure)
-
-    # Replicates source leaves when one source leaf corresponds to multiple leaves in the
-    # target tree def. This ensures the number of leaves is correct.
-    final_leaves, remainder = _replicate_leaves(source_treedef, target_treedef, source_leaves, error_context)
-    assert len(final_leaves) == len(target_leaves), "error 1: This should never happen. Yell at maintainer"
-    assert len(remainder) == 0, "error 2: This should never happen. Yell at maintainer"
-    return jax.tree_util.tree_unflatten(target_treedef, final_leaves)
 
 
