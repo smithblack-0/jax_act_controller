@@ -49,7 +49,6 @@ class BroadcastEditor:
     #        - Various arithmetic methods
     #        - Various magic methods
     #    - Docstring
-    def upd
 
     def __init__(self,
                  state: ACTStates,

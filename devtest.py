@@ -3,34 +3,19 @@ from jax import numpy as jnp
 from jax.experimental import checkify
 from typing import Callable, Type
 
+def print_branch():
+    message = "This has been printed"
+    jax.debug.print(message)
 
-class ParameterCapture:
-  def __init__(self,
-               *args,
-               **kwargs
-               ):
-    self.args = args
-    self.kwargs = kwargs
-  def __call__(self, function: Callable):
-    return function(*self.args, **self.kwargs)
+def pass_branch():
+    pass
 
 
-def checkify_and_jit(function: Callable):
-  checkified_function = checkify.checkify(function)
-  jit_function = jax.jit(checkified_function)
+@jax.jit
+def test_printing(value: float):
+    flag = value > 0
+    jax.lax.cond(flag, print_branch, pass_branch)
 
+test_printing(-0.2)
+test_printing(3.0)
 
-def discharge_side_effects(execution : Tuple[Callable, Capture]):
-
-
-  errors, output = jit_function()
-  return output, errors
-
-def unflatten_and_execute_side_effects(errors, output):
-  errors.throw()
-  return output
-def unflatten_computation(aux_data: BoundCapture, main: Any):
-  aux_data.errors.throw()
-  return main
-
-  r
